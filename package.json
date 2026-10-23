@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mobile": "vite --host --mode mobile",
+    "dev:local": "firebase emulators:exec --only firestore --ui --project demo-fast-app \"node scripts/seed.js && vite --mode emulator\"",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "firebase-tools": "^15.33.0",
     "vite": "^7.1.0"
   }
 }

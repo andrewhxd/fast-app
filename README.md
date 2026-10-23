@@ -24,11 +24,32 @@ Requires Node.js 20.19+ or 22.12+.
 
 ```bash
 npm install
-npm run dev   # then open http://localhost:5173
+npm run dev:local   # then open http://localhost:5173
 ```
 
-To try it on a phone, run `npm run dev:mobile` and open the `Network: https://...` address it prints (phones only allow the microphone over HTTPS).
-Local development uses the live database.
+`npm run dev:local` runs the app against a Firestore emulator on your computer, filled with sample stories, so you can record, edit, move and delete freely.
+It needs Java 21 or newer.
+The local data resets each time you stop it (Ctrl+C), and the emulator's own UI at http://127.0.0.1:4000 shows what's in the database.
+
+`npm run dev` runs the app against the shared live database instead, the one https://fast-app-cs499.web.app uses.
+To try it on a phone, run `npm run dev:mobile` and open the `Network: https://...` address it prints (phones only allow the microphone over HTTPS); this also uses the live database.
+
+## Use your own Firebase project
+
+To run a fork on your own Firebase project:
+
+1. Create a project in the [Firebase console](https://console.firebase.google.com), add a web app to it, and create a Cloud Firestore database (Standard edition).
+2. Copy `.env` to `.env.local` and fill in your web app's config.
+`.env.local` isn't committed and overrides `.env`.
+3. Deploy the security rules and the app:
+
+```bash
+npx firebase login
+npm run build
+npx firebase deploy --only firestore,hosting --project your-project-id
+```
+
+The free Spark plan is enough.
 
 ## Built with
 

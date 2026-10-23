@@ -3,4 +3,6 @@ dist/
 .firebase/
 *.log
 .DS_Store
-.env*
+# Local overrides, e.g. a fork's own Firebase project. .env and .env.emulator are committed.
+.env.local
+.env.*.local

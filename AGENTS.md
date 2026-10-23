@@ -42,8 +42,9 @@ Commits are authored by the repository owner only.
 Never deploy rules, hosting or anything else to `fast-audio-playback-demo`, which is a separate audio recorder demo that this app grew out of.
 - Before any deploy, confirm the active project really is `fast-app-cs499` (`npx firebase-tools use`, or `firebase_get_environment` with the Firebase MCP server).
 With the Firebase MCP server, change the project directory and the active project in two separate calls, then check `firebase_get_environment` again: setting both in one call once deployed this app's rules to the wrong project.
-- Local development uses the live database, so deleting a story locally deletes it for everyone.
-When cleaning up test data, delete only stories titled `... (delete me)`.
+- Test with `npm run dev:local`, which uses a local Firestore emulator with sample stories and can't reach live data.
+`npm run dev` and `npm run dev:mobile` use the live database, so deleting a story there deletes it for everyone.
+When cleaning up test data on the live database, delete only stories titled `... (delete me)`.
 Keep the owner's own test story "Hello Hi Test".
 
 ## The FAST rules
@@ -67,24 +68,32 @@ Requires Node.js 20.19+ or 22.12+.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
-npm run dev:mobile   # HTTPS on the local network, for testing on a phone
+npm run dev:local    # http://localhost:5173, against a local Firestore emulator with sample stories
+npm run dev          # http://localhost:5173, against the live database
+npm run dev:mobile   # HTTPS on the local network, for testing on a phone (live database)
 npm run build        # production build into dist/
 ```
+
+`npm run dev:local` starts the Firestore emulator (project `demo-fast-app`, with the real `firestore.rules`), runs `scripts/seed.js`, then starts Vite in `emulator` mode.
+It needs Java 21 or newer.
+Ctrl+C stops all of it, and the local data resets on the next start.
+The Emulator UI at http://127.0.0.1:4000 shows the local database.
+The seed writes through the security rules, the way the app does, so a data model change the rules reject makes it fail.
 
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
 There is no test suite or linter yet.
-Check changes by running the app and using it.
+Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
 
 Only people added to the Firebase project can deploy.
+The Firebase CLI is a dev dependency, so `npx firebase` uses the version in `package-lock.json`.
 
 ```bash
 npm run build
-npx -y firebase-tools@latest deploy --only firestore,hosting --project fast-app-cs499
+npx firebase deploy --only firestore,hosting --project fast-app-cs499
 ```
 
 ## What the app does
@@ -145,9 +154,21 @@ Don't record real patient names or real family stories until sign-in exists.
 ## Firebase
 
 - **Project:** `fast-app-cs499` ("FAST app"), on the free Spark plan.
-- **Web app:** "FASTapp" (config in `src/firebase.js`; it identifies the project and is not a secret).
+- **Web app:** "FASTapp".
+Its config is in `.env`; it identifies the project and is not a secret.
 - **Database:** Cloud Firestore, Standard edition, location `nam5`, used through Firestore Lite (one-off reads and writes, no live listeners).
 - **Hosting:** https://fast-app-cs499.web.app (serves the `dist` build).
+
+### Configuration
+
+`src/firebase.js` reads the Firebase config from Vite environment variables (`VITE_FIREBASE_*`).
+- `.env` (committed): the shared `fast-app-cs499` project, used by `npm run dev`, `npm run dev:mobile` and `npm run build`.
+- `.env.local` (not committed): a fork's own project, overriding `.env`.
+- `.env.emulator` (committed): `npm run dev:local`, with project `demo-fast-app` and `VITE_FIRESTORE_EMULATOR` set, which connects to the emulator and adds "(local)" to the page title.
+It takes priority over `.env.local`, so local runs never reach a real project.
+
+The emulator's ports are in `firebase.json`.
+The README explains how to run a fork on its own Firebase project.
 
 ### Data model
 
@@ -190,10 +211,11 @@ The rules are a prototype and get replaced with per-treatment access once sign-i
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
 - `src/storage.js`: saves, lists, loads, moves, swaps, replaces (after an edit) and deletes stories in Firestore.
-- `src/firebase.js`: the Firebase config.
+- `src/firebase.js`: connects to Firebase with the config from the `.env` files, or to the emulator.
 - `src/audio.js`: picks a recording format the browser supports.
 - `src/icons.jsx`: the small inline icons.
 - `src/styles.css`: the stylesheet, with light and dark colors defined once at the top and the computer layout at the end.
+- `scripts/seed.js`: fills the local emulator with sample stories (the ones in the design canvas), with generated voice-like WAV audio.
 
 ## Third-party audio code
 
