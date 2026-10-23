@@ -11,6 +11,31 @@ It is a React 19 + Vite 7 web app built for phones, with a simple layout for com
 - **Design canvas** (every screen, design decisions, and space for future designs): https://claude.ai/artifact/CquXcpcqKMESpw2XEK8N9W
 - **UI guide** (annotated walkthrough of the screens): https://claude.ai/artifact/PTAsrDbXoU1zTCmvN1wXZq
 
+The two claude.ai links may not open for every agent; everything they contain that matters for the code is written down in `docs/`.
+
+## Start here
+
+This file has the rules of the project and the facts you need for most changes.
+For more depth, read the doc that fits the task:
+
+| Doc | Read it when |
+| --- | --- |
+| [docs/requirements.md](docs/requirements.md) | You need to know what the app must do. It summarizes the class project doc (the PDF isn't in this repo), with what's built and what isn't. |
+| [docs/architecture.md](docs/architecture.md) | You're changing code: navigation, data flow, storage, recording, playback, the editor, styling, pitfalls, how to change the data model, and how to test. |
+| [docs/design.md](docs/design.md) | You're changing anything people see: the look, colors, layout, wording, and the reasons behind each design decision. |
+| [docs/roadmap.md](docs/roadmap.md) | You're building something new: what's left, in order, with suggested approaches. |
+
+### How to work on a task
+
+1. Read the relevant docs above and the code you'll touch.
+2. Run `npm install`, then `npm run dev:local` to work against a local emulator with sample stories.
+3. Make the change in the style of the code around it.
+4. Check it in the browser at phone width and at 1280 px, in light and dark mode (see [Testing](docs/architecture.md#testing)).
+5. Run `npm run build` to be sure it builds.
+6. Update the docs the change affects: this file, `docs/`, `README.md`, and the comment at the top of `firestore.rules` if the data model changed.
+7. Stop any dev server you started.
+Deploy only when asked, following the safety rules below.
+
 ## Working rules
 
 These apply to every change.
@@ -49,7 +74,7 @@ Keep the owner's own test story "Hello Hi Test".
 
 ## The FAST rules
 
-These come from the project doc and were confirmed by the project owner, so don't change them without asking.
+These come from the project doc ([docs/requirements.md](docs/requirements.md)) and were confirmed by the project owner, so don't change them without asking.
 
 - There are exactly **4 story sets**: Happy set 1, Happy set 2, Challenging set 1 and Challenging set 2 (doc slides 10, 11 and 21).
 - A story can be any length up to **5:00, counting the patient's name** said 3 times at its start.
@@ -139,8 +164,11 @@ The colors carry meaning: peach for happy stories, sky blue for challenging stor
 It follows the system's light or dark setting, with both palettes defined once at the top of `src/styles.css`.
 Buttons are at least 44 px tall.
 The design canvas linked above has every screen on phone and computer, the reasoning behind each decision, and a "Coming later" area for the account and admin designs.
+[docs/design.md](docs/design.md) has the same decisions in writing, plus the color meanings and wording rules.
 
 ## Not built yet
+
+[docs/roadmap.md](docs/roadmap.md) has suggested approaches for each of these.
 
 - Sign-in, the setup screen, roles and invites.
 There is one hardcoded treatment (`demo`), and **anyone with the link can see and delete its stories**.
@@ -196,6 +224,8 @@ The rules are a prototype and get replaced with per-treatment access once sign-i
 
 ## Code map
 
+[docs/architecture.md](docs/architecture.md) explains how these fit together.
+
 - `src/App.jsx`: the menu, and moving between screens (each screen is a browser history entry).
 - `src/NavBar.jsx`: the top bar with its text buttons.
 - `src/Sidebar.jsx`: the sidebar shown on a computer.
@@ -216,6 +246,8 @@ The rules are a prototype and get replaced with per-treatment access once sign-i
 - `src/icons.jsx`: the small inline icons.
 - `src/styles.css`: the stylesheet, with light and dark colors defined once at the top and the computer layout at the end.
 - `scripts/seed.js`: fills the local emulator with sample stories (the ones in the design canvas), with generated voice-like WAV audio.
+- `firestore.rules`: the security rules, which are also the data model's schema.
+- `docs/`: onboarding docs (requirements, architecture, design, roadmap).
 
 ## Third-party audio code
 

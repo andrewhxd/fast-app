@@ -58,5 +58,11 @@ The story editor uses [SoundTouchJS](https://github.com/cutterbl/SoundTouchJS) (
 
 ## For contributors and coding agents
 
-Project details (rules, data model, security rules, code map, deploy steps and working conventions) are in [AGENTS.md](AGENTS.md).
+Start with [AGENTS.md](AGENTS.md): the project's rules, data model, commands, deploy steps and working conventions.
 `CLAUDE.md` is a symlink to the same file.
+
+More depth is in `docs/`:
+- [Requirements](docs/requirements.md): what the FAST app must do, summarized from the project doc, with what's built so far.
+- [Architecture](docs/architecture.md): how the code works, its pitfalls, and how to test changes.
+- [Design](docs/design.md): the look, the wording, and the reasons behind the design decisions.
+- [Roadmap](docs/roadmap.md): what's left to build, with suggested approaches.
