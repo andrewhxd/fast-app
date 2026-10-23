@@ -1,0 +1,1639 @@
+/* "Soft Modern" (E+): flat pastel cards with soft shadows, pill buttons and plenty of space.
+   Pastel colors carry meaning: peach = happy stories, sky = challenging stories, mint = a set in range,
+   indigo = actions, red = recording and deleting. */
+
+:root {
+  color-scheme: light dark;
+  font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-text-size-adjust: 100%;
+
+  --bg: #f7f6fb;
+  --surface: #ffffff;
+  --text: #1c1f33;
+  --muted: #5e6178;
+  --faint: #8e90a6;
+  --line: #efedf6;
+  --well: #eceaf4; /* behind segmented controls */
+  --primary: #4b4fc4;
+  --on-primary: #ffffff;
+  --primary-soft: #ece9fb;
+  --record: #e0483e;
+  --on-record: #ffffff;
+  --danger-text: #b3261e;
+  --danger-soft: #fdecea;
+  --track: #efedf6;
+  --target: #c8eedc;
+  --ok: #2f9e6e;
+  --warn: #c98a00;
+  --wave: #3a3d57;
+  --wave-light: #c9c6de;
+  --shadow: 0 1px 2px rgb(28 31 51 / 0.04), 0 12px 32px -20px rgb(28 31 51 / 0.25);
+  --shadow-small: 0 1px 2px rgb(28 31 51 / 0.06);
+  --glass: rgb(255 255 255 / 0.72); /* a light layer on a pastel card: chips and bar tracks */
+
+  --happy-bg: #ffebdd;
+  --happy-fill: #e8834f;
+  --happy-text: #6b3b1e;
+  --challenging-bg: #e3ebff;
+  --challenging-fill: #5b7fd6;
+  --challenging-text: #2e3d63;
+  --done-bg: #ddf5ea;
+  --done-fill: #2f9e6e;
+  --done-text: #1c6b4a;
+  --over-bg: #fdecea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131420;
+    --surface: #1e2030;
+    --text: #eeeef6;
+    --muted: #a7a9c0;
+    --faint: #7d8099;
+    --line: #2c2e42;
+    --well: #2a2c40;
+    --primary: #8d90f2;
+    --on-primary: #15153a;
+    --primary-soft: #2b2c52;
+    --record: #f0675c;
+    --on-record: #2a0805;
+    --danger-text: #ff8a84;
+    --danger-soft: #3e1f1c;
+    --track: #2c2e42;
+    --target: #2e5a45;
+    --ok: #5cc795;
+    --warn: #e8b53a;
+    --wave: #d6d7e6;
+    --wave-light: #4a4c66;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -20px rgb(0 0 0 / 0.6);
+    --shadow-small: 0 1px 2px rgb(0 0 0 / 0.3);
+    --glass: rgb(255 255 255 / 0.1);
+
+    --happy-bg: #3a2a20;
+    --happy-fill: #f29a68;
+    --happy-text: #f3d3be;
+    --challenging-bg: #1f2a44;
+    --challenging-fill: #86a3ec;
+    --challenging-text: #cfdbf7;
+    --done-bg: #1c3529;
+    --done-fill: #5cc795;
+    --done-text: #9be3c0;
+    --over-bg: #3e1f1c;
+  }
+}
+
+/* A tint sets one set's colors: its pastel background, its bar color and its text color. */
+.tint-happy {
+  --tint-bg: var(--happy-bg);
+  --tint-fill: var(--happy-fill);
+  --tint-text: var(--happy-text);
+}
+
+.tint-challenging {
+  --tint-bg: var(--challenging-bg);
+  --tint-fill: var(--challenging-fill);
+  --tint-text: var(--challenging-text);
+}
+
+.tint-done {
+  --tint-bg: var(--done-bg);
+  --tint-fill: var(--done-fill);
+  --tint-text: var(--done-text);
+}
+
+.tint-over {
+  --tint-bg: var(--over-bg);
+  --tint-fill: var(--record);
+  --tint-text: var(--danger-text);
+}
+
+body {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  color: var(--text);
+  background-color: var(--bg);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+/* ---------- Page frame ---------- */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  max-width: 28rem;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 0 1.25rem max(1.5rem, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* The top bar: a button or the wordmark on each side, an optional title in the middle. */
+/* Everything but the sidebar. */
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* The sidebar and anything marked desktop-only appear on a computer only (see the end of this file). */
+.sidebar,
+.desktop-only {
+  display: none;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.navbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 3rem;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+.navbar > :first-child {
+  justify-self: start;
+}
+
+.navbar > :last-child {
+  justify-self: end;
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.nav-button.strong {
+  font-weight: 700;
+}
+
+.nav-button:disabled {
+  opacity: 0.4;
+}
+
+.nav-button .icon {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.nav-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.nav-title strong {
+  font-weight: 600;
+}
+
+.nav-title span {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wordmark span {
+  color: var(--primary);
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-top: 0.75rem;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.lead {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.lead strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.hint,
+.footnote {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.footnote {
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Buttons and links at the bottom of a screen. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+}
+
+/* ---------- Cards ---------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.card-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.card-line strong {
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.card-line span {
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+
+.card-text {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.card-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.group-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.5rem;
+}
+
+.group-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---------- Buttons ---------- */
+
+.pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  min-height: 3.75rem;
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 999px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.pill:disabled,
+.pill-small:disabled {
+  opacity: 0.45;
+}
+
+.pill-primary {
+  color: var(--on-primary);
+  background-color: var(--primary);
+  box-shadow: 0 10px 24px -14px var(--primary);
+}
+
+.pill-record {
+  color: var(--on-record);
+  background-color: var(--record);
+}
+
+.pill-white {
+  color: var(--text);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+}
+
+.pill-danger {
+  color: var(--danger-text);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+}
+
+.pill-quiet {
+  min-height: 2.75rem;
+  color: var(--muted);
+  background: none;
+}
+
+.pill-quiet.danger {
+  color: var(--danger-text);
+}
+
+/* A smaller rounded button inside a card, e.g. "Record". */
+.pill-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill-small.pill-primary {
+  box-shadow: none;
+}
+
+.record-dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background-color: currentColor;
+  flex: none;
+}
+
+/* The pink dot on indigo buttons that start recording. */
+.record-dot.soft {
+  width: 0.625rem;
+  height: 0.625rem;
+  background-color: #ffb4aa;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+  background-color: var(--surface);
+}
+
+.chip.tinted {
+  color: var(--tint-text);
+  background-color: var(--tint-bg);
+}
+
+.tag {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: var(--on-primary);
+  background-color: var(--primary);
+}
+
+.tag.soft {
+  color: var(--tint-text, var(--text));
+  background-color: var(--surface);
+}
+
+/* ---------- Bars ---------- */
+
+.bar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background-color: var(--track);
+}
+
+.bar-thick {
+  height: 0.625rem;
+  border-radius: 0.3125rem;
+  overflow: visible;
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background-color: var(--tint-fill, var(--primary));
+}
+
+.bar-fill.ok {
+  background-color: var(--ok);
+}
+
+.bar-fill.warn {
+  background-color: var(--warn);
+}
+
+.bar-fill.long {
+  background-color: var(--record);
+}
+
+/* The 9:00 to 11:00 target at the right end of a set's bar (which runs 0:00 to 11:00). */
+.bar-zone {
+  position: absolute;
+  inset: 0 0 0 auto;
+  background-color: var(--target);
+}
+
+/* A limit on a bar, e.g. where the set is full. */
+.bar-marker {
+  position: absolute;
+  top: -0.3125rem;
+  bottom: -0.3125rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--text);
+}
+
+.set-card .bar,
+.segments .bar {
+  background-color: var(--glass);
+}
+
+/* Home: one bar segment per set, in that set's colors. */
+.segments {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+
+.segments .bar {
+  background-color: var(--tint-bg);
+}
+
+/* ---------- Messages ---------- */
+
+.notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  font-size: 0.9375rem;
+  color: var(--done-text);
+  background-color: var(--done-bg);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--danger-text);
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.confirm p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.confirm .buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.confirm .pill {
+  min-height: 3rem;
+  font-size: 1rem;
+}
+
+/* ---------- Menu ---------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background-color: rgb(20 20 40 / 0.25);
+}
+
+.menu {
+  position: fixed;
+  top: calc(max(0.75rem, env(safe-area-inset-top)) + 3rem);
+  right: max(1rem, calc(50% - 13rem));
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  min-width: 15rem;
+  padding: 0.375rem;
+  border-radius: 1.25rem;
+  background-color: var(--surface);
+  box-shadow: 0 16px 40px rgb(20 20 40 / 0.2);
+}
+
+.menu button {
+  min-height: 3rem;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 0.875rem;
+  text-align: left;
+  background: none;
+}
+
+.menu button.current {
+  font-weight: 600;
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+/* ---------- Sets ---------- */
+
+.set-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1.375rem;
+  background-color: var(--tint-bg);
+}
+
+.set-card.listen {
+  padding: 0.375rem;
+  border-radius: 1.5rem;
+}
+
+.set-card.listen .set-head {
+  padding: 0.5rem 0.625rem 0.625rem;
+}
+
+.set-card.is-target {
+  box-shadow: 0 0 0 3px var(--primary);
+}
+
+.set-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+}
+
+.set-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.set-text strong,
+.set-head .mini-text strong {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.set-text span,
+.set-head .mini-text span {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--tint-text);
+}
+
+.set-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--tint-text);
+}
+
+.set-ready .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.status-chip {
+  padding: 0.3125rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--tint-text);
+  background-color: var(--glass);
+}
+
+/* ---------- Stories in a set (Listen) ---------- */
+
+.story-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.125rem;
+  overflow: hidden;
+  background-color: var(--surface);
+}
+
+.story-list > * + * {
+  border-top: 1px solid var(--line);
+}
+
+.story-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.75rem;
+  border: none;
+  text-align: left;
+  background: none;
+  box-sizing: border-box;
+}
+
+.story-row .play-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.story-row .play-button .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.more-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--muted);
+  background: none;
+  flex: none;
+}
+
+.more-button[aria-expanded='true'] {
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.story-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.action {
+  min-height: 2.75rem;
+  border: none;
+  border-radius: 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  background-color: var(--well);
+}
+
+.action.edit {
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.action.delete {
+  color: var(--danger-text);
+  background-color: var(--danger-soft);
+}
+
+.slot-confirm {
+  padding: 0 0.75rem 0.75rem;
+}
+
+/* Rearranging: each story is a row to pick, marked with a circle; the picked one gets a check. */
+.story-row.pick {
+  min-height: 3.5rem;
+}
+
+.pick-mark {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--faint);
+  border-radius: 50%;
+  color: var(--on-primary);
+  box-sizing: border-box;
+  flex: none;
+}
+
+.pick-mark .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.story-row.selected {
+  background-color: var(--primary-soft);
+}
+
+.story-row.selected .pick-mark {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.story-row .tag {
+  margin-right: 0.5rem;
+}
+
+.story-row .hint {
+  margin-right: 0.5rem;
+}
+
+/* The last line of a set: "Record a story", or "Move ... here" while rearranging. */
+.add-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 3.25rem;
+  margin: 0;
+  padding: 0 0.875rem;
+  border: none;
+  text-align: left;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+  box-sizing: border-box;
+}
+
+.add-row.muted {
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+
+/* ---------- Players ---------- */
+
+.play-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--on-primary);
+  background-color: var(--primary);
+  flex: none;
+}
+
+.play-button.small .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.play-button:disabled {
+  opacity: 0.45;
+}
+
+/* Compact player: a play button beside a title, and a line with the time. */
+.mini-player {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.mini-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
+  padding: 0.5rem 0;
+}
+
+.mini-text strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mini-text span {
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Full player. */
+.player {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.player-track {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.player-track .bar {
+  background-color: var(--glass);
+}
+
+.player-label {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bar-labels {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  min-height: 1.125rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--tint-text, var(--muted));
+}
+
+/* ---------- Recording ---------- */
+
+.recorder {
+  align-items: center;
+  padding: 1.375rem 1.25rem;
+  border-radius: 1.75rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.status .record-dot {
+  width: 0.5625rem;
+  height: 0.5625rem;
+  background-color: var(--faint);
+}
+
+.status.recording {
+  color: var(--danger-text);
+}
+
+.status.recording .record-dot {
+  background-color: var(--record);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status.recording .record-dot {
+    animation: none;
+  }
+}
+
+.timer {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer strong {
+  font-size: 4.5rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.timer span {
+  color: var(--muted);
+}
+
+.waveform-slot {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  height: 2.75rem;
+}
+
+/* A flat line while not recording, like a silent waveform. */
+.waveform-slot:empty::before {
+  content: '';
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--track);
+}
+
+/* The bars are drawn in this element's text color. */
+.waveform {
+  display: block;
+  width: 100%;
+  height: 2.75rem;
+  color: var(--tint-fill, var(--text));
+}
+
+.limit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  align-self: stretch;
+}
+
+.marker-label {
+  position: absolute;
+  transform: translateX(-50%);
+  font-weight: 600;
+  color: var(--tint-text);
+}
+
+.end-label {
+  margin-left: auto;
+}
+
+.timer-hint {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* "A little too long": the length, and how far over the limit it is. */
+.over-card .bar {
+  overflow: visible;
+}
+
+.over-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.over-line strong {
+  font-size: 3rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.over-chip,
+.fit-chip {
+  padding: 0.3125rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--danger-text);
+  background-color: var(--danger-soft);
+}
+
+.fit-chip.fits {
+  color: var(--done-text);
+  background-color: var(--done-bg);
+}
+
+/* "Edit to fit" and "Record it again". */
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border: 2px solid transparent;
+  border-radius: 1.375rem;
+  text-align: left;
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+}
+
+.choice-card.recommended {
+  border-color: var(--primary);
+}
+
+.choice-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background-color: var(--well);
+  flex: none;
+}
+
+.choice-card.recommended .choice-icon {
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.choice-text strong {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.choice-text > span {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ---------- Details ---------- */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1.5rem;
+  background-color: var(--tint-bg);
+}
+
+.review-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--tint-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.field-label {
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-width: 0;
+  height: 3.25rem;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 1rem;
+  font: inherit;
+  color: var(--text);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+  box-sizing: border-box;
+}
+
+.field input::placeholder {
+  color: var(--faint);
+}
+
+/* Draw the dropdown arrow ourselves, so iPhone, Android and desktop all show the same one. */
+.field select {
+  appearance: none;
+  padding-right: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1.125rem;
+}
+
+.field select:invalid {
+  color: var(--faint);
+}
+
+/* Two or three choices in a row, like an iPhone segmented control. Each is a label with a
+   hidden radio button, or a button with role="radio". */
+.segmented {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 1rem;
+  background-color: var(--well);
+}
+
+.segmented label,
+.segmented button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.875rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: none;
+  cursor: pointer;
+}
+
+.segmented label.on,
+.segmented button[aria-checked='true'] {
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+}
+
+.segmented label.on {
+  color: var(--tint-text);
+  background-color: var(--tint-bg);
+}
+
+.segmented label:has(input:focus-visible) {
+  outline: 3px solid var(--primary);
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Editor ---------- */
+
+.length-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: 1.375rem;
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+}
+
+.length-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.length-text > span,
+.length-text small {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.length-text strong {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.length-text s {
+  color: var(--faint);
+  text-decoration-thickness: 2px;
+}
+
+.wave-card {
+  padding: 1.125rem 1rem 0.875rem;
+  border-radius: 1.75rem;
+}
+
+/* The story's waveform: drag the handles to trim, or drag across it to pick a part. */
+.waveform-edit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 6rem;
+  padding: 0 2px;
+  touch-action: none;
+  user-select: none;
+}
+
+.waveform-edit.picking {
+  cursor: crosshair;
+}
+
+.wave-bar {
+  flex: 1;
+  min-width: 0;
+  border-radius: 999px;
+  background-color: var(--wave);
+}
+
+.wave-bar.trimmed {
+  opacity: 0.2;
+}
+
+.wave-bar.removed {
+  background-color: var(--wave-light);
+}
+
+.wave-bar.faster,
+.wave-bar.picked {
+  background-color: var(--primary);
+}
+
+.trim-frame {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  border-top: 3px solid var(--primary);
+  border-bottom: 3px solid var(--primary);
+  pointer-events: none;
+}
+
+.trim-handle {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  width: 0.75rem;
+  margin-left: -0.375rem;
+  border-radius: 0.375rem;
+  background-color: var(--primary);
+  cursor: ew-resize;
+}
+
+.trim-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 1.5rem;
+  border-radius: 1px;
+  background-color: var(--on-primary);
+  transform: translate(-50%, -50%);
+}
+
+.pick-box {
+  position: absolute;
+  top: -0.375rem;
+  bottom: -0.375rem;
+  border-radius: 0.75rem;
+  border-inline: 4px solid var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  pointer-events: none;
+}
+
+.ruler {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.pick-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pick-text span {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.tool-list {
+  gap: 0;
+  padding: 0;
+  border-radius: 1.375rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-small);
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.625rem 1rem;
+  border: none;
+  text-align: left;
+  background: none;
+  box-sizing: border-box;
+}
+
+.tool-row + .tool-row {
+  border-top: 1px solid var(--line);
+}
+
+.tool-row > .icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--faint);
+}
+
+.tool-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.tool-text strong {
+  font-weight: 600;
+}
+
+.tool-text span {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.switch {
+  position: relative;
+  width: 3.25rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--well);
+  flex: none;
+  transition: background-color 0.15s;
+}
+
+.switch span {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition: transform 0.15s;
+}
+
+.switch[aria-checked='true'] {
+  background-color: var(--primary);
+}
+
+.switch[aria-checked='true'] span {
+  transform: translateX(1.25rem);
+}
+
+.switch:disabled {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch span {
+    transition: none;
+  }
+}
+
+/* ---------- Computer ---------- */
+
+/* A wide window: the sidebar replaces the Menu button and Back, the sets sit in two columns
+   (happy beside challenging), and recording or editing keeps a narrower, focused page. */
+@media (min-width: 60rem) {
+  .screen {
+    flex-direction: row;
+    max-width: none;
+    padding: 0;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 16rem;
+    height: 100dvh;
+    padding: 1.75rem 1rem;
+    border-right: 1px solid var(--line);
+    background-color: var(--surface);
+    box-sizing: border-box;
+    flex: none;
+  }
+
+  .sidebar .wordmark {
+    padding: 0 0.75rem;
+    font-size: 1.5rem;
+  }
+
+  .sidebar-tagline {
+    margin: 0 0 1.5rem;
+    padding: 0 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+
+  .side-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .side-nav button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+    border: none;
+    border-radius: 0.875rem;
+    font-weight: 500;
+    text-align: left;
+    color: var(--text);
+    background: none;
+  }
+
+  .side-nav .icon {
+    color: var(--muted);
+  }
+
+  .side-nav button:hover:not(:disabled) {
+    background-color: var(--bg);
+  }
+
+  .side-nav button.current {
+    font-weight: 600;
+    color: var(--primary);
+    background-color: var(--primary-soft);
+  }
+
+  .side-nav button.current .icon {
+    color: var(--primary);
+  }
+
+  .side-nav button:disabled {
+    opacity: 0.45;
+  }
+
+  .sidebar-hint {
+    margin-top: 0.5rem;
+    padding: 0 0.75rem;
+  }
+
+  .page {
+    width: 100%;
+    max-width: 64rem;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 0 2.5rem 2.5rem;
+    box-sizing: border-box;
+  }
+
+  .page.focused {
+    max-width: 42rem;
+  }
+
+  .desktop-hidden,
+  .navbar .wordmark,
+  .menu,
+  .backdrop {
+    display: none;
+  }
+
+  .desktop-only {
+    display: block;
+  }
+
+  .content {
+    gap: 1rem;
+    padding-top: 1rem;
+  }
+
+  .page-title {
+    font-size: 2.25rem;
+  }
+
+  .groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 1.5rem;
+  }
+
+  /* Buttons follow what they act on, instead of waiting at the bottom of a tall window. */
+  .actions {
+    margin-top: 0;
+    padding-top: 0.5rem;
+  }
+
+  /* Home's Record and Listen buttons are already in the sidebar, and each set has its own Record. */
+  .home-actions .pill {
+    display: none;
+  }
+
+  .home-actions .footnote {
+    text-align: left;
+  }
+
+  .pill-primary:hover:not(:disabled),
+  .pill-record:hover:not(:disabled),
+  .pill-small.pill-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  .pill-white:hover:not(:disabled),
+  .pill-danger:hover:not(:disabled),
+  .choice-card:hover {
+    box-shadow: var(--shadow);
+  }
+
+  button.story-row:hover:not(:disabled, .selected),
+  button.add-row:hover:not(:disabled),
+  button.tool-row:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--primary-soft) 50%, transparent);
+  }
+}

@@ -1,0 +1,156 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// The FAST app prototype, in its own Firebase project (fast-app-cs499).
+// There is no sign-in yet (requested by the owner), so every request is unauthenticated.
+// Anyone can list, play, save, move, and delete stories. Because of that, these rules strictly
+// validate what can be written and deny everything else.
+//
+// Collection: treatments/{treatmentId}/stories
+// Treatment ID: only "demo" for now (one hardcoded treatment until sign-in exists).
+// The treatments/{treatmentId} document itself is never read or written.
+// Document ID: auto-generated
+// Fields (all required, no others; after create only setNumber can change):
+//   - title: string (1-100 chars) - e.g. "Heather and Dave's wedding"
+//   - storyteller: string (1-100 chars) - the family member telling the story
+//   - relationship: string, one of Mother, Father, Sister, Brother, Aunt, Uncle, Cousin, Friend
+//   - affect: string, "happy" or "challenging"
+//   - setNumber: int (1 or 2) - which of the two sets with this affect; the only field that can
+//     change after create (moving a story to the other set with the same affect)
+//   - nameDuration: int (1-60,000) - ms of the clip saying the patient's name 3 times
+//   - storyDuration: int (1-300,000) - ms of the story clip; with the name clip, at most 5:00
+//     (nameDuration + storyDuration <= 300,000). A set holds any number of stories.
+//   - type: string (1-100 chars, starts with "audio/") - format of both clips
+//   - nameSize: int (1 to size - 1) - bytes of the name clip; the story clip's bytes follow it
+//   - size: int (2-5,000,000) - total audio bytes of both clips
+//   - chunkCount: int (1-5) - number of chunk documents, ceil(size / 1,000,000)
+//   - createdAt: timestamp - server time of the save
+//
+// Subcollection: treatments/{treatmentId}/stories/{storyId}/chunks
+// Document ID: "0" to "4" (chunk index)
+// Fields (required, no others, immutable):
+//   - data: bytes (1-1,000,000) - one piece of the audio
+//
+// The app saves a story and all its chunks in one batch, and deletes them in one batch.
+// It lists stories with orderBy('createdAt'), reads chunks by ID, and moves a story by updating
+// only its setNumber.
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isStringOfLength(value, minLen, maxLen) {
+      return value is string && value.size() >= minLen && value.size() <= maxLen;
+    }
+
+    function isIntInRange(value, min, max) {
+      return value is int && value >= min && value <= max;
+    }
+
+    // The only treatment until sign-in and per-treatment membership exist.
+    function isDemoTreatment(treatmentId) {
+      return treatmentId == 'demo';
+    }
+
+    function storyPath(treatmentId, storyId) {
+      return /databases/$(database)/documents/treatments/$(treatmentId)/stories/$(storyId);
+    }
+
+    function storyChunkPath(treatmentId, storyId, index) {
+      return /databases/$(database)/documents/treatments/$(treatmentId)/stories/$(storyId)/chunks/$(string(index));
+    }
+
+    // True if chunk `index` will exist after this batch (or isn't needed for this many chunks).
+    function storyChunkWrittenIfNeeded(treatmentId, storyId, chunkCount, index) {
+      return index >= chunkCount || existsAfter(storyChunkPath(treatmentId, storyId, index));
+    }
+
+    // True if chunk `index` will be gone after this batch (or never existed for this many chunks).
+    function storyChunkDeletedIfPresent(treatmentId, storyId, chunkCount, index) {
+      return index >= chunkCount || !existsAfter(storyChunkPath(treatmentId, storyId, index));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidStory(treatmentId, storyId, data) {
+      let fields = ['title', 'storyteller', 'relationship', 'affect', 'setNumber', 'nameDuration',
+                    'storyDuration', 'type', 'nameSize', 'size', 'chunkCount', 'createdAt'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && isStringOfLength(data.title, 1, 100)
+        && isStringOfLength(data.storyteller, 1, 100)
+        && data.relationship in ['Mother', 'Father', 'Sister', 'Brother', 'Aunt', 'Uncle', 'Cousin', 'Friend']
+        && data.affect in ['happy', 'challenging']
+        && isIntInRange(data.setNumber, 1, 2)
+        && isIntInRange(data.nameDuration, 1, 60000)
+        && isIntInRange(data.storyDuration, 1, 300000)
+        && data.nameDuration + data.storyDuration <= 300000 // a story is at most 5:00, counting the name
+        && isStringOfLength(data.type, 1, 100) && data.type.matches('^audio/.*')
+        && isIntInRange(data.size, 2, 5000000)
+        && isIntInRange(data.nameSize, 1, data.size - 1) // both clips have audio
+        && data.chunkCount is int && data.chunkCount == math.ceil(data.size / 1000000.0) // .0: whole-number division would round down
+        && data.createdAt == request.time
+        // Every chunk must be saved in the same batch, so no story exists without its audio.
+        && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 0)
+        && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 1)
+        && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 2)
+        && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 3)
+        && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 4);
+    }
+
+    // Moving a story: only setNumber changes, to 1 or 2. The affect can't change, so a story only
+    // moves between the two sets with the same affect, and every other field stays as validated on create.
+    function isValidStoryMove() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['setNumber'])
+        && isIntInRange(request.resource.data.setNumber, 1, 2);
+    }
+
+    function isValidStoryChunk(treatmentId, storyId, chunkId, data) {
+      return data.keys().hasAll(['data']) && data.keys().hasOnly(['data'])
+        && data.data is bytes && data.data.size() >= 1 && data.data.size() <= 1000000
+        && chunkId.matches('^[0-4]$')
+        // Chunks can only be written together with a brand-new story, never added later.
+        && !exists(storyPath(treatmentId, storyId))
+        && existsAfter(storyPath(treatmentId, storyId))
+        && int(chunkId) < getAfter(storyPath(treatmentId, storyId)).data.chunkCount;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /treatments/{treatmentId}/stories/{storyId} {
+      // Public by request: the prototype has no sign-in yet, and only the demo treatment exists.
+      allow read: if isDemoTreatment(treatmentId);
+      allow create: if isDemoTreatment(treatmentId) && isValidStory(treatmentId, storyId, request.resource.data);
+      allow update: if isDemoTreatment(treatmentId) && isValidStoryMove();
+      // Delete only together with all of its chunks.
+      allow delete: if isDemoTreatment(treatmentId)
+        && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 0)
+        && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 1)
+        && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 2)
+        && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 3)
+        && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 4);
+
+      match /chunks/{chunkId} {
+        allow read: if isDemoTreatment(treatmentId);
+        allow create: if isDemoTreatment(treatmentId)
+          && isValidStoryChunk(treatmentId, storyId, chunkId, request.resource.data);
+        allow update: if false;
+        // Delete only together with the story it belongs to.
+        allow delete: if isDemoTreatment(treatmentId) && !existsAfter(storyPath(treatmentId, storyId));
+      }
+    }
+
+    // Everything else, including treatments/{treatmentId} itself, is denied by default.
+  }
+}
