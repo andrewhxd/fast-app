@@ -42,6 +42,9 @@ Color is never the only signal; there is always text too ("Ready", "In range", "
 ### Layout
 
 - **Phone** (the main target): a single column up to 28rem (448 px) wide, a top bar with text buttons (Back, Cancel, Menu), and a Menu that opens Home, Record a Story and Listen to Stories.
+- Home shows a compact current-group card with a group name selector.
+Choosing a group updates the `group` query parameter in the URL.
+If the URL points to a group that does not exist, show the selector and a clear recovery message without showing story progress.
 - **Computer** (960 px and wider): a 256 px sidebar replaces Menu and Back.
 Home shows all 4 sets with their own Record buttons, and sets sit in two columns, happy beside challenging, in a page up to 64rem wide.
 Recording and editing use a narrower 42rem column, and the sidebar is locked ("Finish or cancel this story to leave.") so a recording isn't lost by accident.

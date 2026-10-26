@@ -5,8 +5,9 @@ import RecordStory from './RecordStory.jsx';
 import Sidebar from './Sidebar.jsx';
 import StoryLibrary from './StoryLibrary.jsx';
 import StorySets from './StorySets.jsx';
+import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon } from './icons.jsx';
-import { listStories } from './storage.js';
+import { listGroups, listStories } from './storage.js';
 import { summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber }
@@ -16,25 +17,15 @@ import { summarizeSets } from './stories.js';
 const HOME = { name: 'home', depth: 0 };
 const SETS_SCREEN = { name: 'sets' };
 const STORIES_SCREEN = { name: 'stories' };
-const DEFAULT_GROUP_ID = 'default';
-
-// Group IDs are Firestore document IDs. Preserve their case and decoded URL value,
-// while rejecting values Firestore cannot use as a document ID.
+// Group IDs are lowercase URL-friendly Firestore document IDs.
 function readGroupFromUrl() {
   const groupId = new URLSearchParams(window.location.search).get('group');
   if (groupId === null || groupId === '') return { groupId: DEFAULT_GROUP_ID, error: '' };
 
-  const byteLength = new TextEncoder().encode(groupId).length;
-  if (
-    !groupId.trim()
-    || groupId.includes('/')
-    || /^__.*__$/.test(groupId)
-    || /[\u0000-\u001f\u007f]/.test(groupId)
-    || byteLength > 1500
-  ) {
+  if (!isValidGroupId(groupId)) {
     return {
       groupId: DEFAULT_GROUP_ID,
-      error: 'That group ID is not valid. Using the default group.',
+      error: 'Group IDs use lowercase letters, numbers and hyphens. Choose a group below.',
     };
   }
 
@@ -64,6 +55,8 @@ const FOCUSED = ['record', 'edit'];
 export default function App() {
   const [screen, setScreen] = useState(firstScreen);
   const [group, setGroup] = useState(readGroupFromUrl);
+  const [groups, setGroups] = useState(null); // available groups, null while loading
+  const [groupsError, setGroupsError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [stories, setStories] = useState(null); // every story's details (no audio), null while loading
   const [notice, setNotice] = useState(''); // e.g. "Added ... to Happy set 1."
@@ -91,6 +84,20 @@ export default function App() {
     return () => window.removeEventListener('popstate', onBack);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    listGroups()
+      .then((list) => {
+        if (!cancelled) setGroups(list);
+      })
+      .catch((err) => {
+        if (!cancelled) setGroupsError(`Could not load groups: ${err.message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function goTo(next) {
     setMenuOpen(false);
     setNotice('');
@@ -100,6 +107,17 @@ export default function App() {
     else history.pushState(entry, '');
     setScreen(entry);
     window.scrollTo(0, 0);
+  }
+
+  function selectGroup(groupId) {
+    if (!groups?.some((item) => item.id === groupId) && groupId !== DEFAULT_GROUP_ID) return;
+    if (groupId === group.groupId && !group.error) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('group', groupId);
+    const entry = group.error || !groups?.some((item) => item.id === group.groupId) ? HOME : screen;
+    history.pushState(entry, '', url);
+    setScreen(entry);
+    setGroup({ groupId, error: '' });
   }
 
   // Back to the previous screen, or Home if this screen was the first one opened.
@@ -132,6 +150,15 @@ export default function App() {
   }
 
   const summary = stories && summarizeSets(stories);
+  const defaultGroup = { id: DEFAULT_GROUP_ID, name: 'Default group' };
+  const groupsForPicker = groups && groups.some((item) => item.id === DEFAULT_GROUP_ID)
+    ? groups
+    : [defaultGroup, ...(groups ?? [])];
+  const currentGroup = groups?.find((item) => item.id === group.groupId);
+  const groupMessage = groupsError
+    || group.error
+    || (groups && !currentGroup ? `Group "${group.groupId}" was not found. Choose an existing group below.` : '');
+  const groupUnavailable = Boolean(groupsError || group.error || (groups && !currentGroup));
   const recordInSet = (affect, setNumber) => goTo({ name: 'record', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
@@ -140,13 +167,35 @@ export default function App() {
     </button>
   );
   const status = error ? <p className="error" role="alert">{error}</p> : !summary && <p className="lead">Loading stories...</p>;
-  const groupStatus = group.error && <p className="error" role="alert">{group.error}</p>;
 
   let content;
-  if (screen.name === 'home') {
+  if (groups === null && !groupsError) {
+    content = <main className="content"><p className="lead">Loading groups...</p></main>;
+  } else if (groupUnavailable) {
     content = (
       <Home
         groupId={group.groupId}
+        groups={groupsForPicker}
+        groupMessage={groupMessage}
+        groupUnavailable
+        onSelectGroup={selectGroup}
+        menuButton={(
+          <button className="nav-button desktop-hidden" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="menu">
+            Menu
+          </button>
+        )}
+        onRecord={() => goTo(SETS_SCREEN)}
+        onRecordInSet={recordInSet}
+        onListen={() => goTo(STORIES_SCREEN)}
+      />
+    );
+  } else if (screen.name === 'home') {
+    content = (
+      <Home
+        groupId={group.groupId}
+        groups={groupsForPicker}
+        currentGroup={currentGroup}
+        onSelectGroup={selectGroup}
         summary={summary}
         menuButton={(
           <button className="nav-button desktop-hidden" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="menu">
@@ -204,7 +253,6 @@ export default function App() {
     <div className="screen">
       <Sidebar items={MENU} current={section} locked={focused} onGo={goTo} />
       <div className={`page${focused ? ' focused' : ''}`}>
-        {groupStatus}
         {content}
         {screen.name === 'home' && error && status}
       </div>

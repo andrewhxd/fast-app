@@ -9,6 +9,8 @@ Family members record personal stories for a loved one with a disorder of consci
 
 ## What works
 
+- Browse Firestore groups and select the current group on Home; the group ID stays in the URL.
+Story lists are still shared across groups until group-specific story filtering is implemented.
 - Record a story in 3 steps: the patient's name said 3 times, the story (up to 5:00, counting the name), then its details.
 - Track each set toward its 9:00 to 11:00 target.
 - Fix a story that runs long with a simple editor: trim the ends, shorten long pauses, or speed up or cut a part.
@@ -30,6 +32,9 @@ npm run dev:local   # then open http://localhost:5173
 `npm run dev:local` runs the app against a Firestore emulator on your computer, filled with sample stories, so you can record, edit, move and delete freely.
 It needs Java 21 or newer.
 The local data resets each time you stop it (Ctrl+C), and the emulator's own UI at http://127.0.0.1:4000 shows what's in the database.
+The seed creates `groups/default` and `groups/family-a` (`Family A`).
+To add another local group, create `groups/<group-id>` in the Emulator UI with `id`, `name`, `createdAt` and `updatedAt` fields, then choose it on Home.
+Group IDs use lowercase letters, numbers and hyphens, for example `family-a`.
 
 `npm run dev` runs the app against the shared live database instead, the one https://fast-app-cs499.web.app uses.
 To try it on a phone, run `npm run dev:mobile` and open the `Network: https://...` address it prints (phones only allow the microphone over HTTPS); this also uses the live database.

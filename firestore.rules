@@ -9,6 +9,12 @@ rules_version = '2';
 // Anyone can list, play, save, move, and delete stories. Because of that, these rules strictly
 // validate what can be written and deny everything else.
 //
+// Collection: groups/{groupId}
+// Group ID: lowercase letters, numbers and hyphens; "default" is the built-in group.
+// Fields (all required): id (same as the document ID), name, createdAt and updatedAt.
+// Groups can be read publicly. Only valid group documents can be created; they cannot be updated
+// or deleted yet. There is no sign-in or group access control.
+//
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo" for now (one hardcoded treatment until sign-in exists).
 // The treatments/{treatmentId} document itself is never read or written.
@@ -53,6 +59,17 @@ service cloud.firestore {
 
     function isIntInRange(value, min, max) {
       return value is int && value >= min && value <= max;
+    }
+
+    function isValidGroup(groupId, data) {
+      let fields = ['id', 'name', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && isStringOfLength(groupId, 1, 1500)
+        && groupId.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && data.id == groupId
+        && isStringOfLength(data.name, 1, 100)
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
     }
 
     // The only treatment until sign-in and per-treatment membership exist.
@@ -127,6 +144,12 @@ service cloud.firestore {
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isValidGroup(groupId, request.resource.data);
+      allow update, delete: if false;
+    }
 
     match /treatments/{treatmentId}/stories/{storyId} {
       // Public by request: the prototype has no sign-in yet, and only the demo treatment exists.

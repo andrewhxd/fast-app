@@ -123,7 +123,9 @@ npx firebase deploy --only firestore,hosting --project fast-app-cs499
 
 ## What the app does
 
-- **Home**: how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
+- **Home**: choose a group by its name, see how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
+The selected group ID is kept in the URL as `?group=<groupId>`; missing or empty means `default`.
+An unknown group shows a recovery message instead of the story sets.
 On a phone, **Menu** (top right) opens Home, Record a Story and Listen to Stories.
 - **Record a story**: pick a set; each shows its stories, total and time left to go, with a bar from 0:00 to 11:00 and the 9:00 to 11:00 target shaded.
 A set in range shows "Ready" and can't take more stories.
@@ -201,11 +203,17 @@ The README explains how to run a fork on its own Firebase project.
 ### Data model
 
 ```
+groups/{groupId}                         id, name, createdAt, updatedAt
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt
 treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
+
+Group IDs use lowercase letters, numbers and hyphens.
+The local seed creates the `default` and `family-a` groups.
+The app reads group names and changes groups from the Home screen, writing the selection to `?group=<groupId>`.
+Stories still use the existing treatment-wide list until group filtering is implemented.
 
 Cloud Storage needs the paid Blaze plan, so the audio is stored in Firestore, split into 1 MB chunk documents.
 The name clip and the story clip are stored back to back, and `nameSize` says where to split them.
@@ -240,7 +248,8 @@ The rules are a prototype and get replaced with per-treatment access once sign-i
 - `src/ClipPlayer.jsx`: plays several clips back to back as one, as a full player or a compact row.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
-- `src/storage.js`: saves, lists, loads, moves, swaps, replaces (after an edit) and deletes stories in Firestore.
+- `src/group.js`: the default group ID and group ID validation.
+- `src/storage.js`: reads groups, and saves, lists, loads, moves, swaps, replaces (after an edit) and deletes stories in Firestore.
 - `src/firebase.js`: connects to Firebase with the config from the `.env` files, or to the emulator.
 - `src/audio.js`: picks a recording format the browser supports.
 - `src/icons.jsx`: the small inline icons.

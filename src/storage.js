@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore/lite';
 import { createAudioCache } from './audioCache.js';
 import { db } from './firebase.js';
+import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
 
 // Stories are stored in Cloud Firestore. The project is on the free Spark plan,
 // which has no Cloud Storage bucket, so the audio itself goes into Firestore too:
@@ -21,6 +22,32 @@ const MAX_CHUNKS = 5; // must match firestore.rules
 const MAX_SIZE = CHUNK_SIZE * MAX_CHUNKS; // 5 MB, about 10 minutes of audio at 64 kbps
 
 const storiesRef = collection(db, 'treatments', TREATMENT_ID, 'stories');
+const groupsRef = collection(db, 'groups');
+
+// List the available groups for the home screen.
+export async function listGroups() {
+  const snapshot = await getDocs(groupsRef);
+  const groups = snapshot.docs.map((groupDoc) => {
+    const data = groupDoc.data();
+    if (
+      !isValidGroupId(groupDoc.id)
+      || data.id !== groupDoc.id
+      || typeof data.name !== 'string'
+      || !data.name.trim()
+      || typeof data.createdAt?.toDate !== 'function'
+      || typeof data.updatedAt?.toDate !== 'function'
+    ) {
+      throw new Error(`Group "${groupDoc.id}" is missing valid group details.`);
+    }
+    return { id: groupDoc.id, name: data.name.trim(), createdAt: data.createdAt, updatedAt: data.updatedAt };
+  });
+  return groups.sort((a, b) => {
+    if (a.id === b.id) return 0;
+    if (a.id === DEFAULT_GROUP_ID) return -1;
+    if (b.id === DEFAULT_GROUP_ID) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 // Stories' audio stays in memory (RAM) once loaded, up to 200 MB in total (a safe margin for
 // phone browsers), so replays don't download again; past that, the least recently used is dropped.

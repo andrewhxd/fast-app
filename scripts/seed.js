@@ -12,7 +12,7 @@
 import { fileURLToPath } from 'node:url';
 import { initializeApp } from 'firebase/app';
 import {
-  Bytes, collection, connectFirestoreEmulator, doc, getDocs, getFirestore, limit, query, serverTimestamp, writeBatch,
+  Bytes, collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, writeBatch,
 } from 'firebase/firestore/lite';
 import { loadEnv } from 'vite';
 
@@ -200,6 +200,20 @@ if (!emulator || !projectId?.startsWith('demo-')) {
 const db = getFirestore(initializeApp({ apiKey: env.VITE_FIREBASE_API_KEY, projectId }));
 const [host, port] = emulator.split(':');
 connectFirestoreEmulator(db, host, Number(port));
+
+for (const group of [
+  { id: 'default', name: 'Default group' },
+  { id: 'family-a', name: 'Family A' },
+]) {
+  const groupRef = doc(db, 'groups', group.id);
+  if (!(await getDoc(groupRef)).exists()) {
+    await setDoc(groupRef, {
+      ...group,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
 
 const existing = await getDocs(query(collection(db, 'treatments', TREATMENT_ID, 'stories'), limit(1)));
 if (!existing.empty) {
