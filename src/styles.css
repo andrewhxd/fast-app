@@ -318,6 +318,14 @@ button:disabled {
   color: var(--muted);
 }
 
+.group-card .field {
+  gap: 0.25rem;
+}
+
+.group-card .error {
+  margin: 0;
+}
+
 .card-text {
   margin: 0;
   line-height: 1.45;

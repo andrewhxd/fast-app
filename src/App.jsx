@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import EditStory from './EditStory.jsx';
 import Home from './Home.jsx';
 import RecordStory from './RecordStory.jsx';
 import Sidebar from './Sidebar.jsx';
 import StoryLibrary from './StoryLibrary.jsx';
 import StorySets from './StorySets.jsx';
+import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon } from './icons.jsx';
-import { listStories } from './storage.js';
+import { listGroups, listStories } from './storage.js';
 import { summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber }
@@ -16,6 +17,20 @@ import { summarizeSets } from './stories.js';
 const HOME = { name: 'home', depth: 0 };
 const SETS_SCREEN = { name: 'sets' };
 const STORIES_SCREEN = { name: 'stories' };
+// Group IDs are lowercase URL-friendly Firestore document IDs.
+function readGroupFromUrl() {
+  const groupId = new URLSearchParams(window.location.search).get('group');
+  if (groupId === null || groupId === '') return { groupId: DEFAULT_GROUP_ID, error: '' };
+
+  if (!isValidGroupId(groupId)) {
+    return {
+      groupId: DEFAULT_GROUP_ID,
+      error: 'Group IDs use lowercase letters, numbers and hyphens. Choose a group below.',
+    };
+  }
+
+  return { groupId, error: '' };
+}
 
 // After a reload, go back to the screen that was open, but never into the middle of a recording or edit.
 function firstScreen() {
@@ -39,30 +54,67 @@ const FOCUSED = ['record', 'edit'];
 
 export default function App() {
   const [screen, setScreen] = useState(firstScreen);
+  const [group, setGroup] = useState(readGroupFromUrl);
+  const [groups, setGroups] = useState(null); // available groups, null while loading
+  const [groupsError, setGroupsError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [stories, setStories] = useState(null); // every story's details (no audio), null while loading
+  const [storiesGroupId, setStoriesGroupId] = useState(null);
+  const storyLoadId = useRef(0);
+  const activeGroupId = useRef(group.groupId);
+  activeGroupId.current = group.groupId;
   const [notice, setNotice] = useState(''); // e.g. "Added ... to Happy set 1."
   const [error, setError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false); // an edited story is replacing the old one
 
-  function refreshStories() {
-    return listStories()
-      .then((list) => {
+  async function refreshStories(groupId = group.groupId) {
+    if (groupId !== activeGroupId.current) return;
+    const loadId = ++storyLoadId.current;
+    setStories(null);
+    setError('');
+    try {
+      const list = await listStories(groupId);
+      if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setStories(list);
-        setError('');
-      })
-      .catch((err) => setError(`Could not load stories: ${err.message}`));
+        setStoriesGroupId(groupId);
+      }
+    } catch (err) {
+      if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
+        setError(`Could not load stories: ${err.message}`);
+      }
+    }
   }
 
   useEffect(() => {
     history.replaceState(screen, '');
-    refreshStories();
     const onBack = (event) => {
       setScreen(event.state?.name ? event.state : HOME);
+      setGroup(readGroupFromUrl());
       setMenuOpen(false);
     };
     window.addEventListener('popstate', onBack);
     return () => window.removeEventListener('popstate', onBack);
+  }, []);
+
+  useEffect(() => {
+    refreshStories(group.groupId);
+    return () => {
+      storyLoadId.current += 1;
+    };
+  }, [group.groupId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listGroups()
+      .then((list) => {
+        if (!cancelled) setGroups(list);
+      })
+      .catch((err) => {
+        if (!cancelled) setGroupsError(`Could not load groups: ${err.message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function goTo(next) {
@@ -74,6 +126,18 @@ export default function App() {
     else history.pushState(entry, '');
     setScreen(entry);
     window.scrollTo(0, 0);
+  }
+
+  function selectGroup(groupId) {
+    if (!groups?.some((item) => item.id === groupId) && groupId !== DEFAULT_GROUP_ID) return;
+    if (groupId === group.groupId && !group.error) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('group', groupId);
+    const entry = group.error || !groups?.some((item) => item.id === group.groupId) ? HOME : screen;
+    history.pushState(entry, '', url);
+    setScreen(entry);
+    setGroup({ groupId, error: '' });
+    setNotice('');
   }
 
   // Back to the previous screen, or Home if this screen was the first one opened.
@@ -105,7 +169,17 @@ export default function App() {
     setSavingEdit(false);
   }
 
-  const summary = stories && summarizeSets(stories);
+  const currentStories = storiesGroupId === group.groupId ? stories : null;
+  const summary = currentStories && summarizeSets(currentStories);
+  const defaultGroup = { id: DEFAULT_GROUP_ID, name: 'Default group' };
+  const groupsForPicker = groups && groups.some((item) => item.id === DEFAULT_GROUP_ID)
+    ? groups
+    : [defaultGroup, ...(groups ?? [])];
+  const currentGroup = groups?.find((item) => item.id === group.groupId);
+  const groupMessage = groupsError
+    || group.error
+    || (groups && !currentGroup ? `Group "${group.groupId}" was not found. Choose an existing group below.` : '');
+  const groupUnavailable = Boolean(groupsError || group.error || (groups && !currentGroup));
   const recordInSet = (affect, setNumber) => goTo({ name: 'record', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
@@ -116,9 +190,33 @@ export default function App() {
   const status = error ? <p className="error" role="alert">{error}</p> : !summary && <p className="lead">Loading stories...</p>;
 
   let content;
-  if (screen.name === 'home') {
+  if (groups === null && !groupsError) {
+    content = <main className="content"><p className="lead">Loading groups...</p></main>;
+  } else if (groupUnavailable) {
     content = (
       <Home
+        groupId={group.groupId}
+        groups={groupsForPicker}
+        groupMessage={groupMessage}
+        groupUnavailable
+        onSelectGroup={selectGroup}
+        menuButton={(
+          <button className="nav-button desktop-hidden" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="menu">
+            Menu
+          </button>
+        )}
+        onRecord={() => goTo(SETS_SCREEN)}
+        onRecordInSet={recordInSet}
+        onListen={() => goTo(STORIES_SCREEN)}
+      />
+    );
+  } else if (screen.name === 'home') {
+    content = (
+      <Home
+        groupId={group.groupId}
+        groups={groupsForPicker}
+        currentGroup={currentGroup}
+        onSelectGroup={selectGroup}
         summary={summary}
         menuButton={(
           <button className="nav-button desktop-hidden" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="menu">
@@ -133,11 +231,13 @@ export default function App() {
   } else if (!summary) {
     content = <main className="content">{status}</main>;
   } else if (screen.name === 'sets') {
-    content = <StorySets summary={summary} notice={notice} backButton={backButton} onRecord={recordInSet} />;
+    content = <StorySets groupId={group.groupId} summary={summary} notice={notice} backButton={backButton} onRecord={recordInSet} />;
   } else if (screen.name === 'stories') {
     content = (
       <StoryLibrary
-        stories={stories}
+        groupId={group.groupId}
+        key={group.groupId}
+        stories={currentStories}
         summary={summary}
         notice={notice}
         backButton={backButton}
@@ -148,9 +248,9 @@ export default function App() {
       />
     );
   } else if (screen.name === 'edit') {
-    const story = stories.find((s) => s.id === screen.storyId);
+    const story = currentStories?.find((s) => s.id === screen.storyId);
     content = story ? (
-      <EditStory key={story.id} story={story} summary={summary} onSaved={editSaved} onCancel={goBack} />
+      <EditStory key={story.id} groupId={group.groupId} story={story} summary={summary} onSaved={editSaved} onCancel={goBack} />
     ) : (
       <main className="content">
         {savingEdit ? <p className="lead">Saving...</p> : <p className="error" role="alert">This story was deleted.</p>}
@@ -159,6 +259,7 @@ export default function App() {
   } else {
     content = (
       <RecordStory
+        groupId={group.groupId}
         affect={screen.affect}
         setNumber={screen.setNumber}
         summary={summary}

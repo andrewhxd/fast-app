@@ -4,22 +4,29 @@ rules_version = '2';
 // Assumed Data Model
 // ===============================================================
 //
-// The FAST app prototype, in its own Firebase project (fast-app-cs499).
+// The FAST app prototype, with production in fast-app-cs499 and isolated preview data in fast-app-2026.
 // There is no sign-in yet (requested by the owner), so every request is unauthenticated.
 // Anyone can list, play, save, move, and delete stories. Because of that, these rules strictly
 // validate what can be written and deny everything else.
+//
+// Collection: groups/{groupId}
+// Group ID: lowercase letters, numbers and hyphens; "default" is the built-in group.
+// Fields (all required): id (same as the document ID), name, createdAt and updatedAt.
+// Groups can be read publicly. Only valid group documents can be created; they cannot be updated
+// or deleted yet. There is no sign-in or group access control.
 //
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo" for now (one hardcoded treatment until sign-in exists).
 // The treatments/{treatmentId} document itself is never read or written.
 // Document ID: auto-generated
-// Fields (all required, no others; after create only setNumber can change):
+// Fields for new stories (all required, no others; after create only setNumber can change):
 //   - title: string (1-100 chars) - e.g. "Heather and Dave's wedding"
 //   - storyteller: string (1-100 chars) - the family member telling the story
 //   - relationship: string, one of Mother, Father, Sister, Brother, Aunt, Uncle, Cousin, Friend
 //   - affect: string, "happy" or "challenging"
 //   - setNumber: int (1 or 2) - which of the two sets with this affect; the only field that can
 //     change after create (moving a story to the other set with the same affect)
+//   - group: string - the ID of an existing groups/{groupId} document
 //   - nameDuration: int (1-60,000) - ms of the clip saying the patient's name 3 times
 //   - storyDuration: int (1-300,000) - ms of the story clip; with the name clip, at most 5:00
 //     (nameDuration + storyDuration <= 300,000). A set holds any number of stories.
@@ -28,6 +35,8 @@ rules_version = '2';
 //   - size: int (2-5,000,000) - total audio bytes of both clips
 //   - chunkCount: int (1-5) - number of chunk documents, ceil(size / 1,000,000)
 //   - createdAt: timestamp - server time of the save
+// Stories created before the group field was added may omit it; they remain readable and movable.
+// The app treats them as "default" when replacing their audio. New stories must name an existing group.
 //
 // Subcollection: treatments/{treatmentId}/stories/{storyId}/chunks
 // Document ID: "0" to "4" (chunk index)
@@ -53,6 +62,25 @@ service cloud.firestore {
 
     function isIntInRange(value, min, max) {
       return value is int && value >= min && value <= max;
+    }
+
+    function isValidGroupId(groupId) {
+      return groupId is string && groupId.size() >= 1 && groupId.size() <= 1500
+        && groupId.matches('^[a-z0-9]+(-[a-z0-9]+)*$');
+    }
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function isValidGroup(groupId, data) {
+      let fields = ['id', 'name', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && isValidGroupId(groupId)
+        && data.id == groupId
+        && isStringOfLength(data.name, 1, 100)
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
     }
 
     // The only treatment until sign-in and per-treatment membership exist.
@@ -83,14 +111,17 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidStory(treatmentId, storyId, data) {
-      let fields = ['title', 'storyteller', 'relationship', 'affect', 'setNumber', 'nameDuration',
-                    'storyDuration', 'type', 'nameSize', 'size', 'chunkCount', 'createdAt'];
+      let fields = ['title', 'storyteller', 'relationship', 'affect', 'setNumber', 'group',
+                    'nameDuration', 'storyDuration', 'type', 'nameSize', 'size', 'chunkCount', 'createdAt'];
       return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
         && isStringOfLength(data.title, 1, 100)
         && isStringOfLength(data.storyteller, 1, 100)
         && data.relationship in ['Mother', 'Father', 'Sister', 'Brother', 'Aunt', 'Uncle', 'Cousin', 'Friend']
         && data.affect in ['happy', 'challenging']
         && isIntInRange(data.setNumber, 1, 2)
+        && isValidGroupId(data.group)
+        && exists(groupPath(data.group))
+        && get(groupPath(data.group)).data.id == data.group
         && isIntInRange(data.nameDuration, 1, 60000)
         && isIntInRange(data.storyDuration, 1, 300000)
         && data.nameDuration + data.storyDuration <= 300000 // a story is at most 5:00, counting the name
@@ -127,6 +158,12 @@ service cloud.firestore {
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isValidGroup(groupId, request.resource.data);
+      allow update, delete: if false;
+    }
 
     match /treatments/{treatmentId}/stories/{storyId} {
       // Public by request: the prototype has no sign-in yet, and only the demo treatment exists.

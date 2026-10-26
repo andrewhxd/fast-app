@@ -18,7 +18,8 @@ index.html → src/main.jsx → src/App.jsx
                               ├─ RecordStory ──── useRecorder, LiveWaveform, ClipPlayer, StoryEditor
                               ├─ StoryLibrary ─── "Listen": ClipPlayer per story and per set
                               └─ EditStory ────── StoryEditor for a saved story
-              src/storage.js ── Firestore (src/firebase.js)
+              src/storage.js ── groups and stories in Firestore (src/firebase.js)
+              src/group.js ──── group ID rules and the default group
               src/stories.js ── the FAST rules and time formatting
               src/audioEdit.js ─ decoding, pause finding, edit plans, SoundTouch, MP3
 ```
@@ -29,13 +30,26 @@ index.html → src/main.jsx → src/App.jsx
 The screens are `home`, `sets`, `stories` (Listen), `record` and `edit`.
 - Every screen change is a browser history entry (`history.pushState`), so the phone's Back button and gesture work.
 `depth` counts the app's own screens behind the current one, so Back never leaves the app.
+- The current group comes from `?group=<groupId>`; no parameter or an empty value means `default`.
+Selecting a group on Home pushes a history entry with the new URL, so Back and Forward restore the prior group.
+- `listGroups()` loads `groups/{groupId}` documents for the Home selector.
+If the URL points to an unknown group, the app hides the story screens and shows a group recovery message.
 - After a reload the app reopens the last screen, except that `record` and `edit` fall back to the screen they came from: a recording in progress can't survive a reload.
 - `record` and `edit` are "focused": a narrower page, and on a computer the sidebar is locked so a recording isn't lost by a stray click.
 - To add a screen: add its name to the `screen` handling in `App`, decide its menu section in `SECTION`, whether it's in `FOCUSED`, and give it a `NavBar` (phone) like the others.
 
 ## Data flow
 
-- `App` loads every story's details once with `listStories()` and passes them down; `summarizeSets()` turns them into each set's count and total.
+- `App` loads group documents once and checks that the URL's group exists before showing story content.
+The Home selector changes the group and URL together.
+- `listStories(groupId)` returns only stories for the current group.
+It normalizes legacy documents without `group` to `default` in memory, without migrating the stored documents.
+- `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
+`replaceStoryAudio()` keeps the original group; stories without a group are treated as `default` when edited.
+- `App` loads the selected group's story details and passes them down; `summarizeSets()` turns them into each set's count and total.
+Changing groups clears the visible list while loading and ignores stale requests, so one group's stories cannot appear under another group's URL.
+- `StoryLibrary` preloads audio only for its current story array; set and individual players use those same filtered stories.
+Move, swap, delete and edit verify that the selected story belongs to the current group.
 - After any change (save, move, swap, delete, edit), the screen calls back into `App`, which reloads the list before showing the result.
 Totals are never computed from stale data on the same device.
 - Changes made on another device appear only after the list reloads (opening the app, or making a change).
@@ -48,6 +62,12 @@ Listen starts downloading every story's audio as soon as it opens, because phone
 The data model is in [AGENTS.md](../AGENTS.md#data-model).
 The rules behind it:
 
+- `listGroups()` reads the top-level `groups` collection.
+Group documents have `id`, `name`, `createdAt` and `updatedAt`; the local seed creates `groups/default`, `groups/family-a` and `groups/family-b`, with 11 default stories and one test story in each family group.
+Groups are publicly readable and valid documents may be created, with no sign-in or access control.
+- New stories require a valid `group` ID that matches an existing `groups/{groupId}` document.
+The public demo still has no sign-in or membership checks.
+Legacy stories may omit `group`; they remain readable and movable, and audio replacement assigns them to `default`.
 - **A story's audio is chunked.** Firestore documents max out at 1 MiB, so a story's audio is split into 1 MB chunk documents (at most 5, so 5 MB per story).
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
 - **Writes are atomic batches.** A story and all its chunks are written in one batch, and deleted in one batch.

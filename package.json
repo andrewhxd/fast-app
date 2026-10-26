@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:preview": "vite --mode preview",
     "dev:mobile": "vite --host --mode mobile",
     "dev:local": "firebase emulators:exec --only firestore --ui --project demo-fast-app \"node scripts/seed.js && vite --mode emulator\"",
+    "seed:preview": "node scripts/seed.js --preview",
     "build": "vite build",
+    "build:preview": "vite build --mode preview",
+    "deploy:preview": "npm run build:preview && firebase hosting:channel:deploy group-audio-management --project fast-app-2026 --expires 30d",
     "preview": "vite preview"
   },
   "dependencies": {

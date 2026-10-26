@@ -1,9 +1,11 @@
 // Fills the local Firestore emulator with sample stories, so every screen has something to show.
 // `npm run dev:local` runs this after starting the emulator; it never touches a real Firebase project.
+// `npm run seed:preview` uses the same data in the isolated fast-app-2026 test project.
 //
 // The stories match the ones in the design canvas: Happy set 1 partway there, Happy set 2 in range,
 // Challenging set 1 partway there, and Challenging set 2 empty. Two stories run close to 5:00 and
 // have long pauses, so the story editor has something to shorten.
+// Family A and Family B each get a separate short story to check group filtering and playback.
 //
 // The audio is generated: a voice-like hum in syllables, words and phrases (there is no real speech),
 // saved as WAV. Stories are written through the security rules in firestore.rules, the same way the
@@ -12,7 +14,7 @@
 import { fileURLToPath } from 'node:url';
 import { initializeApp } from 'firebase/app';
 import {
-  Bytes, collection, connectFirestoreEmulator, doc, getDocs, getFirestore, limit, query, serverTimestamp, writeBatch,
+  Bytes, collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, writeBatch,
 } from 'firebase/firestore/lite';
 import { loadEnv } from 'vite';
 
@@ -29,6 +31,12 @@ const STORIES = [
   ['Snow day', 'Jeff Smith', 'Brother', 'happy', 2, '0:50'],
   ["Dad's surgery", 'Jeff Smith', 'Brother', 'challenging', 1, '4:47', true],
   ['The flood', 'Ann Smith', 'Mother', 'challenging', 1, '1:53'],
+];
+
+// A small story in each non-default group makes group filtering and playback easy to check.
+const GROUP_STORIES = [
+  { groupId: 'family-a', story: ['Family A picnic', 'Jeff Smith', 'Brother', 'happy', 1, '0:45'] },
+  { groupId: 'family-b', story: ['Family B birthday', 'Ann Smith', 'Mother', 'happy', 1, '0:50'] },
 ];
 
 // Each storyteller's speaking pitch (Hz).
@@ -153,7 +161,7 @@ function toMs(time) {
 }
 
 // Saves a story and its audio chunks in one batch, like queueStory() in src/storage.js.
-async function saveStory(db, [title, storyteller, relationship, affect, setNumber, length, longPauses = false]) {
+async function saveStory(db, [title, storyteller, relationship, affect, setNumber, length, longPauses = false], groupId = 'default') {
   const pitch = VOICES[storyteller];
   const nameSamples = nameClip(pitch);
   const nameDuration = nameSamples.length / SAMPLES_PER_MS;
@@ -174,6 +182,7 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
     relationship,
     affect,
     setNumber,
+    group: groupId,
     nameDuration,
     storyDuration,
     type: 'audio/wav',
@@ -189,22 +198,49 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
   await batch.commit();
 }
 
-const env = loadEnv('emulator', fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
+const target = process.argv[2] === '--preview' ? 'preview' : 'emulator';
+if (process.argv.length > 2 && process.argv[2] !== '--preview') {
+  throw new Error('Usage: node scripts/seed.js [--preview]');
+}
+
+const env = loadEnv(target, fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
 const projectId = env.VITE_FIREBASE_PROJECT_ID;
 const emulator = env.VITE_FIRESTORE_EMULATOR;
-// Only ever write to the emulator, and only to a "demo-" project, which can't exist outside it.
-if (!emulator || !projectId?.startsWith('demo-')) {
+// Local seeding can only target an emulator and a "demo-" project.
+if (target === 'emulator' && (!emulator || !projectId?.startsWith('demo-'))) {
   throw new Error('.env.emulator must set VITE_FIRESTORE_EMULATOR and a "demo-" VITE_FIREBASE_PROJECT_ID');
+}
+// Cloud writes are limited to the explicitly configured test project.
+if (target === 'preview' && (emulator || projectId !== 'fast-app-2026')) {
+  throw new Error('Preview seeding is allowed only for fast-app-2026, with no Firestore emulator configured.');
 }
 
 const db = getFirestore(initializeApp({ apiKey: env.VITE_FIREBASE_API_KEY, projectId }));
-const [host, port] = emulator.split(':');
-connectFirestoreEmulator(db, host, Number(port));
+if (target === 'emulator') {
+  const [host, port] = emulator.split(':');
+  connectFirestoreEmulator(db, host, Number(port));
+}
+
+for (const group of [
+  { id: 'default', name: 'Default group' },
+  { id: 'family-a', name: 'Family A' },
+  { id: 'family-b', name: 'Family B' },
+]) {
+  const groupRef = doc(db, 'groups', group.id);
+  if (!(await getDoc(groupRef)).exists()) {
+    await setDoc(groupRef, {
+      ...group,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
 
 const existing = await getDocs(query(collection(db, 'treatments', TREATMENT_ID, 'stories'), limit(1)));
 if (!existing.empty) {
-  console.log('The local database already has stories, so no sample stories were added.');
+  console.log(`The ${target} database already has stories, so no sample stories were added.`);
 } else {
-  for (const story of STORIES) await saveStory(db, story);
-  console.log(`Added ${STORIES.length} sample stories to the local database.`);
+  for (const story of STORIES) await saveStory(db, story, 'default');
+  for (const { groupId, story } of GROUP_STORIES) await saveStory(db, story, groupId);
+  console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories to the ${target} database.`);
 }

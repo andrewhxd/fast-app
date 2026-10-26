@@ -20,7 +20,10 @@ function nextStep(summary) {
 // The home screen: progress on the 4 story sets, and the two ways in.
 // On a computer there's room to show the sets themselves too, each with its own Record button.
 // `summary` is null while the stories load.
-export default function Home({ summary, menuButton, onRecord, onRecordInSet, onListen }) {
+export default function Home({
+  groupId, groups = [], currentGroup, groupMessage = '', groupUnavailable = false,
+  onSelectGroup, summary, menuButton, onRecord, onRecordInSet, onListen,
+}) {
   const ready = summary
     ? SETS.filter((s) => setStatus(summary[setKey(s.affect, s.setNumber)].total) === 'complete').length
     : 0;
@@ -39,42 +42,67 @@ export default function Home({ summary, menuButton, onRecord, onRecordInSet, onL
       <main className="content">
         <h1 className="page-title">Your story sets</h1>
 
-        <section className="card progress-card" aria-label="Progress">
+        <section className="card group-card" aria-label="Current group">
           <div className="card-line">
-            <strong>{summary ? `${ready} of ${SETS.length} sets ready` : 'Loading...'}</strong>
-            {summary && <span>{storyCount} {storyCount === 1 ? 'story' : 'stories'}</span>}
+            <strong>Current group</strong>
+            {currentGroup && <span>{currentGroup.name}</span>}
           </div>
-          <div className="segments">
-            {SETS.map(({ affect, setNumber }) => {
-              const total = summary ? summary[setKey(affect, setNumber)].total : 0;
-              const filled = setStatus(total) === 'short' ? Math.min(total / SET_MIN, 1) : 1;
-              return (
-                <div key={setKey(affect, setNumber)} className={`bar ${tintClass(affect, total)}`}>
-                  <div className="bar-fill" style={{ width: `${filled * 100}%` }} />
-                </div>
-              );
-            })}
-          </div>
-          {summary && <p className="card-text">{nextStep(summary)}</p>}
+          <label className="field">
+            <span className="field-label">Choose a group</span>
+            <select value={groupId} onChange={(event) => onSelectGroup(event.target.value)}>
+              {!groups.some((group) => group.id === groupId) && (
+                <option value={groupId} disabled>Unavailable group: {groupId}</option>
+              )}
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>{group.name}</option>
+              ))}
+            </select>
+          </label>
+          {groupMessage && <p className="error" role="alert">{groupMessage}</p>}
         </section>
 
-        {summary && (
-          <div className="desktop-only">
-            <SetGroups summary={summary} onRecord={onRecordInSet} />
-          </div>
-        )}
+        {groupUnavailable ? (
+          <p className="lead">Choose an available group to continue.</p>
+        ) : (
+          <>
+            <section className="card progress-card" aria-label="Progress">
+              <div className="card-line">
+                <strong>{summary ? `${ready} of ${SETS.length} sets ready` : 'Loading...'}</strong>
+                {summary && <span>{storyCount} {storyCount === 1 ? 'story' : 'stories'}</span>}
+              </div>
+              <div className="segments">
+                {SETS.map(({ affect, setNumber }) => {
+                  const total = summary ? summary[setKey(affect, setNumber)].total : 0;
+                  const filled = setStatus(total) === 'short' ? Math.min(total / SET_MIN, 1) : 1;
+                  return (
+                    <div key={setKey(affect, setNumber)} className={`bar ${tintClass(affect, total)}`}>
+                      <div className="bar-fill" style={{ width: `${filled * 100}%` }} />
+                    </div>
+                  );
+                })}
+              </div>
+              {summary && <p className="card-text">{nextStep(summary)}</p>}
+            </section>
 
-        <div className="actions home-actions">
-          <button className="pill pill-primary" onClick={onRecord}>
-            <span className="record-dot soft" aria-hidden="true" />
-            Record a story
-          </button>
-          <button className="pill pill-white" onClick={onListen}>
-            <HeadphonesIcon />
-            Listen to stories
-          </button>
-          <p className="footnote">Playing stories to your loved one opens once all 4 sets are approved.</p>
-        </div>
+            {summary && (
+              <div className="desktop-only">
+                <SetGroups summary={summary} onRecord={onRecordInSet} />
+              </div>
+            )}
+
+            <div className="actions home-actions">
+              <button className="pill pill-primary" onClick={onRecord}>
+                <span className="record-dot soft" aria-hidden="true" />
+                Record a story
+              </button>
+              <button className="pill pill-white" onClick={onListen}>
+                <HeadphonesIcon />
+                Listen to stories
+              </button>
+              <p className="footnote">Playing stories to your loved one opens once all 4 sets are approved.</p>
+            </div>
+          </>
+        )}
       </main>
     </>
   );

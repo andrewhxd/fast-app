@@ -15,7 +15,7 @@ import {
 // 11:00 are offered.
 // `onChanged(message)` reloads the stories after a change; `notice` says what the last change did,
 // until `onClearNotice()` is called. `onEdit(story)` opens the editor.
-export default function StoryLibrary({ stories, summary, notice, backButton, onChanged, onClearNotice, onRecord, onEdit }) {
+export default function StoryLibrary({ groupId, stories, summary, notice, backButton, onChanged, onClearNotice, onRecord, onEdit }) {
   const [arranging, setArranging] = useState(false);
   const [selectedId, setSelectedId] = useState(''); // the story picked to move, while arranging
   const [openId, setOpenId] = useState(''); // the story whose ⋯ actions are showing
@@ -29,7 +29,10 @@ export default function StoryLibrary({ stories, summary, notice, backButton, onC
   // (phones only let audio start right from a tap, not after a download).
   useEffect(() => {
     let cancelled = false;
+    setAudio({});
     setLoadError('');
+    storyClips.current.clear();
+    setClips.current.clear();
     for (const story of stories) {
       loadStoryAudio(story)
         .then((blob) => {
@@ -42,7 +45,7 @@ export default function StoryLibrary({ stories, summary, notice, backButton, onC
     return () => {
       cancelled = true;
     };
-  }, [stories]);
+  }, [groupId, stories]);
 
   // Players need the same clips array on every render, or playback restarts, so the clips are
   // kept until the story or its audio changes.
@@ -128,7 +131,7 @@ export default function StoryLibrary({ stories, summary, notice, backButton, onC
     setError('');
     onClearNotice();
     if (selected && story.id !== selected.id && isTargetSet(story.affect, story.setNumber) && canSwap(selected, story)) {
-      change(() => swapStories(selected, story), `Swapped "${selected.title}" and "${story.title}".`);
+      change(() => swapStories(selected, story, groupId), `Swapped "${selected.title}" and "${story.title}".`);
     } else {
       setSelectedId(story.id === selectedId ? '' : story.id);
     }
@@ -136,7 +139,7 @@ export default function StoryLibrary({ stories, summary, notice, backButton, onC
 
   function moveSelectedTo(setNumber) {
     onClearNotice();
-    change(() => moveStory(selected, setNumber), `Moved "${selected.title}" to ${setName(selected.affect, setNumber)}.`);
+    change(() => moveStory(selected, setNumber, groupId), `Moved "${selected.title}" to ${setName(selected.affect, setNumber)}.`);
   }
 
   function storyRow(story) {
@@ -191,7 +194,7 @@ export default function StoryLibrary({ stories, summary, notice, backButton, onC
           <div className="confirm slot-confirm">
             <p>Delete &quot;{story.title}&quot;? This can&apos;t be undone.</p>
             <div className="buttons">
-              <button className="pill pill-record" onClick={() => change(() => deleteStory(story), `Deleted "${story.title}".`)} disabled={busy}>
+              <button className="pill pill-record" onClick={() => change(() => deleteStory(story, groupId), `Deleted "${story.title}".`)} disabled={busy}>
                 Delete
               </button>
               <button className="pill pill-white" onClick={() => setDeletingId('')} disabled={busy}>Keep it</button>

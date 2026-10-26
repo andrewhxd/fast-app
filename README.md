@@ -9,6 +9,9 @@ Family members record personal stories for a loved one with a disorder of consci
 
 ## What works
 
+- Browse Firestore groups and select the current group on Home; the group ID stays in the URL.
+Story lists, set totals and playback are limited to the selected group.
+New stories save the selected group ID with their metadata, and editing preserves it.
 - Record a story in 3 steps: the patient's name said 3 times, the story (up to 5:00, counting the name), then its details.
 - Track each set toward its 9:00 to 11:00 target.
 - Fix a story that runs long with a simple editor: trim the ends, shorten long pauses, or speed up or cut a part.
@@ -30,9 +33,32 @@ npm run dev:local   # then open http://localhost:5173
 `npm run dev:local` runs the app against a Firestore emulator on your computer, filled with sample stories, so you can record, edit, move and delete freely.
 It needs Java 21 or newer.
 The local data resets each time you stop it (Ctrl+C), and the emulator's own UI at http://127.0.0.1:4000 shows what's in the database.
+The seed creates `groups/default`, `groups/family-a` (`Family A`) and `groups/family-b` (`Family B`).
+It includes 11 default stories and one sample story for each family group to check group-specific lists and playback.
+To add another local group, create `groups/<group-id>` in the Emulator UI with `id`, `name`, `createdAt` and `updatedAt` fields, then choose it on Home.
+Group IDs use lowercase letters, numbers and hyphens, for example `family-a`.
 
 `npm run dev` runs the app against the shared live database instead, the one https://fast-app-cs499.web.app uses.
 To try it on a phone, run `npm run dev:mobile` and open the `Network: https://...` address it prints (phones only allow the microphone over HTTPS); this also uses the live database.
+
+### Preview with the test Firebase project
+
+`npm run dev:preview` runs the app against the `fast-app-2026` test project's Firestore.
+This uses `.env.preview`, so it is separate from both the production project and the local emulator.
+The Firebase web config is client-side configuration, not a secret, and the test project must use safe test data and suitable Firestore rules.
+To fill the test project with the same deterministic groups and stories as the emulator, run `npm run seed:preview`.
+That command refuses to write unless `.env.preview` points to `fast-app-2026` and does not configure an emulator.
+
+To build and publish a temporary Hosting preview, run:
+
+```bash
+npm run deploy:preview
+```
+
+This deploys only Hosting to the `group-audio-management` preview channel in `fast-app-2026` and prints its URL.
+The channel expires after 30 days.
+It does not deploy Firestore rules; deploy rules to the test project separately when needed.
+Preview URLs are public, so do not use real patient or family stories there.
 
 ## Use your own Firebase project
 
