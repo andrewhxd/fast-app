@@ -4,6 +4,7 @@
 // The stories match the ones in the design canvas: Happy set 1 partway there, Happy set 2 in range,
 // Challenging set 1 partway there, and Challenging set 2 empty. Two stories run close to 5:00 and
 // have long pauses, so the story editor has something to shorten.
+// Family A and Family B each get a separate short story to check group filtering and playback.
 //
 // The audio is generated: a voice-like hum in syllables, words and phrases (there is no real speech),
 // saved as WAV. Stories are written through the security rules in firestore.rules, the same way the
@@ -29,6 +30,12 @@ const STORIES = [
   ['Snow day', 'Jeff Smith', 'Brother', 'happy', 2, '0:50'],
   ["Dad's surgery", 'Jeff Smith', 'Brother', 'challenging', 1, '4:47', true],
   ['The flood', 'Ann Smith', 'Mother', 'challenging', 1, '1:53'],
+];
+
+// A small story in each non-default group makes group filtering and playback easy to check.
+const GROUP_STORIES = [
+  { groupId: 'family-a', story: ['Family A picnic', 'Jeff Smith', 'Brother', 'happy', 1, '0:45'] },
+  { groupId: 'family-b', story: ['Family B birthday', 'Ann Smith', 'Mother', 'happy', 1, '0:50'] },
 ];
 
 // Each storyteller's speaking pitch (Hz).
@@ -153,7 +160,7 @@ function toMs(time) {
 }
 
 // Saves a story and its audio chunks in one batch, like queueStory() in src/storage.js.
-async function saveStory(db, [title, storyteller, relationship, affect, setNumber, length, longPauses = false]) {
+async function saveStory(db, [title, storyteller, relationship, affect, setNumber, length, longPauses = false], groupId = 'default') {
   const pitch = VOICES[storyteller];
   const nameSamples = nameClip(pitch);
   const nameDuration = nameSamples.length / SAMPLES_PER_MS;
@@ -174,7 +181,7 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
     relationship,
     affect,
     setNumber,
-    group: 'default',
+    group: groupId,
     nameDuration,
     storyDuration,
     type: 'audio/wav',
@@ -205,6 +212,7 @@ connectFirestoreEmulator(db, host, Number(port));
 for (const group of [
   { id: 'default', name: 'Default group' },
   { id: 'family-a', name: 'Family A' },
+  { id: 'family-b', name: 'Family B' },
 ]) {
   const groupRef = doc(db, 'groups', group.id);
   if (!(await getDoc(groupRef)).exists()) {
@@ -220,6 +228,7 @@ const existing = await getDocs(query(collection(db, 'treatments', TREATMENT_ID, 
 if (!existing.empty) {
   console.log('The local database already has stories, so no sample stories were added.');
 } else {
-  for (const story of STORIES) await saveStory(db, story);
-  console.log(`Added ${STORIES.length} sample stories to the local database.`);
+  for (const story of STORIES) await saveStory(db, story, 'default');
+  for (const { groupId, story } of GROUP_STORIES) await saveStory(db, story, groupId);
+  console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories to the local database.`);
 }

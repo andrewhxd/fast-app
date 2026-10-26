@@ -124,6 +124,7 @@ npx firebase deploy --only firestore,hosting --project fast-app-cs499
 ## What the app does
 
 - **Home**: choose a group by its name, see how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
+Set totals and the Listen screen include only stories from the selected group.
 The selected group ID is kept in the URL as `?group=<groupId>`; missing or empty means `default`.
 An unknown group shows a recovery message instead of the story sets.
 On a phone, **Menu** (top right) opens Home, Record a Story and Listen to Stories.
@@ -146,7 +147,7 @@ An **Edit** button opens the story editor.
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
 An edited saved story replaces the old one in one step, so it's never half saved.
-- **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and its stories.
+- **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and only the selected group's stories.
 Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 **Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
 A move or swap is only offered when both sets stay at or under 11:00.
@@ -211,11 +212,10 @@ treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
 
 Group IDs use lowercase letters, numbers and hyphens.
-The local seed creates the `default` and `family-a` groups.
+The local seed creates the `default`, `family-a` and `family-b` groups, with stories in each so group-specific lists and playback can be checked.
 The app reads group names and changes groups from the Home screen, writing the selection to `?group=<groupId>`.
-Stories still use the existing treatment-wide list until group filtering is implemented.
+`listStories(groupId)` returns only that group's stories; older stories without `group` are normalized in memory as `default` and are never migrated.
 New stories store their selected group ID in `group`, and editing preserves that group.
-Older stories without `group` remain readable and are treated as belonging to `default` when edited.
 The public demo still has no sign-in or membership checks.
 
 Cloud Storage needs the paid Blaze plan, so the audio is stored in Firestore, split into 1 MB chunk documents.

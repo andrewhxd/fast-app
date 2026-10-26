@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import EditStory from './EditStory.jsx';
 import Home from './Home.jsx';
 import RecordStory from './RecordStory.jsx';
@@ -59,22 +59,34 @@ export default function App() {
   const [groupsError, setGroupsError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [stories, setStories] = useState(null); // every story's details (no audio), null while loading
+  const [storiesGroupId, setStoriesGroupId] = useState(null);
+  const storyLoadId = useRef(0);
+  const activeGroupId = useRef(group.groupId);
+  activeGroupId.current = group.groupId;
   const [notice, setNotice] = useState(''); // e.g. "Added ... to Happy set 1."
   const [error, setError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false); // an edited story is replacing the old one
 
-  function refreshStories() {
-    return listStories()
-      .then((list) => {
+  async function refreshStories(groupId = group.groupId) {
+    if (groupId !== activeGroupId.current) return;
+    const loadId = ++storyLoadId.current;
+    setStories(null);
+    setError('');
+    try {
+      const list = await listStories(groupId);
+      if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setStories(list);
-        setError('');
-      })
-      .catch((err) => setError(`Could not load stories: ${err.message}`));
+        setStoriesGroupId(groupId);
+      }
+    } catch (err) {
+      if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
+        setError(`Could not load stories: ${err.message}`);
+      }
+    }
   }
 
   useEffect(() => {
     history.replaceState(screen, '');
-    refreshStories();
     const onBack = (event) => {
       setScreen(event.state?.name ? event.state : HOME);
       setGroup(readGroupFromUrl());
@@ -83,6 +95,13 @@ export default function App() {
     window.addEventListener('popstate', onBack);
     return () => window.removeEventListener('popstate', onBack);
   }, []);
+
+  useEffect(() => {
+    refreshStories(group.groupId);
+    return () => {
+      storyLoadId.current += 1;
+    };
+  }, [group.groupId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +137,7 @@ export default function App() {
     history.pushState(entry, '', url);
     setScreen(entry);
     setGroup({ groupId, error: '' });
+    setNotice('');
   }
 
   // Back to the previous screen, or Home if this screen was the first one opened.
@@ -149,7 +169,8 @@ export default function App() {
     setSavingEdit(false);
   }
 
-  const summary = stories && summarizeSets(stories);
+  const currentStories = storiesGroupId === group.groupId ? stories : null;
+  const summary = currentStories && summarizeSets(currentStories);
   const defaultGroup = { id: DEFAULT_GROUP_ID, name: 'Default group' };
   const groupsForPicker = groups && groups.some((item) => item.id === DEFAULT_GROUP_ID)
     ? groups
@@ -215,7 +236,8 @@ export default function App() {
     content = (
       <StoryLibrary
         groupId={group.groupId}
-        stories={stories}
+        key={group.groupId}
+        stories={currentStories}
         summary={summary}
         notice={notice}
         backButton={backButton}
@@ -226,7 +248,7 @@ export default function App() {
       />
     );
   } else if (screen.name === 'edit') {
-    const story = stories.find((s) => s.id === screen.storyId);
+    const story = currentStories?.find((s) => s.id === screen.storyId);
     content = story ? (
       <EditStory key={story.id} groupId={group.groupId} story={story} summary={summary} onSaved={editSaved} onCancel={goBack} />
     ) : (

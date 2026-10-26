@@ -105,14 +105,21 @@ export async function addStory({ groupId, name, story, ...details }) {
 // Replace a saved story's audio with an edited version, keeping its title and other details.
 // Saved stories never change, so the story is saved again under a new id and the old one deleted,
 // in one batch: either both happen or neither does. Returns the new id.
-export async function replaceStoryAudio(old, { name, story }) {
+function assertStoryGroup(story, groupId) {
+  if (!isValidGroupId(groupId) || (story.group === undefined ? DEFAULT_GROUP_ID : story.group) !== groupId) {
+    throw new Error('This story does not belong to the current group. Reload the story list and try again.');
+  }
+}
+
+export async function replaceStoryAudio(old, { name, story }, groupId) {
+  assertStoryGroup(old, groupId);
   const details = {
     title: old.title,
     storyteller: old.storyteller,
     relationship: old.relationship,
     affect: old.affect,
     setNumber: old.setNumber,
-    group: old.group ?? DEFAULT_GROUP_ID,
+    group: old.group === undefined ? DEFAULT_GROUP_ID : old.group,
   };
   const batch = writeBatch(db);
   const { storyRef, audio } = await queueStory(batch, details, name, story);
@@ -123,10 +130,17 @@ export async function replaceStoryAudio(old, { name, story }) {
   return storyRef.id;
 }
 
-// List every story in the treatment, oldest first (details only, no audio).
-export async function listStories() {
+// List one group's stories, oldest first (details only, no audio).
+// Older documents without a group belong to the default group and are normalized in memory.
+export async function listStories(groupId) {
+  if (!isValidGroupId(groupId)) throw new Error('Choose a valid group before loading stories.');
   const snapshot = await getDocs(query(storiesRef, orderBy('createdAt')));
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snapshot.docs
+    .map((d) => {
+      const data = d.data();
+      return { id: d.id, ...data, group: data.group === undefined ? DEFAULT_GROUP_ID : data.group };
+    })
+    .filter((story) => story.group === groupId);
 }
 
 // Download a story's audio (both clips, back to back) as one Blob, or reuse it if already loaded.
@@ -153,12 +167,15 @@ export function splitClips(story, blob) {
 }
 
 // Move a story to the other set with the same affect (set 1 or 2).
-export function moveStory(story, setNumber) {
+export function moveStory(story, setNumber, groupId) {
+  assertStoryGroup(story, groupId);
   return updateDoc(doc(storiesRef, story.id), { setNumber });
 }
 
 // Swap two stories between the two sets with the same affect, in one batch so both move or neither does.
-export function swapStories(a, b) {
+export function swapStories(a, b, groupId) {
+  assertStoryGroup(a, groupId);
+  assertStoryGroup(b, groupId);
   const batch = writeBatch(db);
   batch.update(doc(storiesRef, a.id), { setNumber: b.setNumber });
   batch.update(doc(storiesRef, b.id), { setNumber: a.setNumber });
@@ -166,7 +183,8 @@ export function swapStories(a, b) {
 }
 
 // Delete a story and all of its audio together.
-export async function deleteStory(story) {
+export async function deleteStory(story, groupId) {
+  assertStoryGroup(story, groupId);
   const batch = writeBatch(db);
   queueDelete(batch, story);
   await batch.commit();

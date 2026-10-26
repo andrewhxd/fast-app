@@ -42,11 +42,14 @@ If the URL points to an unknown group, the app hides the story screens and shows
 
 - `App` loads group documents once and checks that the URL's group exists before showing story content.
 The Home selector changes the group and URL together.
-- At this stage, `listStories()` still loads the existing treatment-wide story list for every valid group.
-Story filtering by group is a later implementation step.
+- `listStories(groupId)` returns only stories for the current group.
+It normalizes legacy documents without `group` to `default` in memory, without migrating the stored documents.
 - `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
 `replaceStoryAudio()` keeps the original group; stories without a group are treated as `default` when edited.
-- `App` loads every story's details once with `listStories()` and passes them down; `summarizeSets()` turns them into each set's count and total.
+- `App` loads the selected group's story details and passes them down; `summarizeSets()` turns them into each set's count and total.
+Changing groups clears the visible list while loading and ignores stale requests, so one group's stories cannot appear under another group's URL.
+- `StoryLibrary` preloads audio only for its current story array; set and individual players use those same filtered stories.
+Move, swap, delete and edit verify that the selected story belongs to the current group.
 - After any change (save, move, swap, delete, edit), the screen calls back into `App`, which reloads the list before showing the result.
 Totals are never computed from stale data on the same device.
 - Changes made on another device appear only after the list reloads (opening the app, or making a change).
@@ -60,7 +63,7 @@ The data model is in [AGENTS.md](../AGENTS.md#data-model).
 The rules behind it:
 
 - `listGroups()` reads the top-level `groups` collection.
-Group documents have `id`, `name`, `createdAt` and `updatedAt`; the local seed creates `groups/default` and `groups/family-a`.
+Group documents have `id`, `name`, `createdAt` and `updatedAt`; the local seed creates `groups/default`, `groups/family-a` and `groups/family-b`, with 11 default stories and one test story in each family group.
 Groups are publicly readable and valid documents may be created, with no sign-in or access control.
 - New stories require a valid `group` ID that matches an existing `groups/{groupId}` document.
 The public demo still has no sign-in or membership checks.

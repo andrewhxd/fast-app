@@ -6,7 +6,7 @@ import { SET_MAX, STORY_MAX, formatTime, setKey, setName, storyLength } from './
 
 // Edit a saved story (from Listen to Stories): open it in the editor, then save the edited audio
 // in its place. The story may grow back up to 5:00, as long as its set stays at or under 11:00.
-export default function EditStory({ story, summary, onSaved, onCancel }) {
+export default function EditStory({ groupId, story, summary, onSaved, onCancel }) {
   const [clips, setClips] = useState(null); // { name, story }
   const [error, setError] = useState('');
 
@@ -45,7 +45,7 @@ export default function EditStory({ story, summary, onSaved, onCancel }) {
       maxLength={Math.min(STORY_MAX, room)}
       limitText={room < STORY_MAX ? `${set} has room for ${formatTime(room)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
       onSave={async (edited) => {
-        await replaceStoryAudio(story, edited);
+        await replaceStoryAudio(story, edited, groupId);
         await onSaved(`Saved your edits to "${story.title}".`);
       }}
       onCancel={onCancel}
