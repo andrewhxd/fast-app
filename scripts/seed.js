@@ -1,20 +1,24 @@
-// Fills the local Firestore emulator with sample stories, so every screen has something to show.
-// `npm run dev:local` runs this after starting the emulator; it never touches a real Firebase project.
-// `npm run seed:preview` uses the same data in the isolated fast-app-2026 test project.
+// Fills the local Firestore and Auth emulators with demo accounts, care teams and sample stories, so
+// every screen has something to show. `npm run dev:local` runs this after starting the emulators;
+// it never touches a real Firebase project.
 //
 // The stories match the ones in the design canvas: Happy set 1 partway there, Happy set 2 in range,
 // Challenging set 1 partway there, and Challenging set 2 empty. Two stories run close to 5:00 and
 // have long pauses, so the story editor has something to shorten.
 // Family A and Family B each get a separate short story to check group filtering and playback.
+// Each group belongs to a demo account (see the end of this file), signed in through the Auth emulator.
 //
 // The audio is generated: a voice-like hum in syllables, words and phrases (there is no real speech),
-// saved as WAV. Stories are written through the security rules in firestore.rules, the same way the
-// app saves them, so a change to the data model that the rules reject makes this script fail.
+// saved as WAV. Accounts, groups, invites and stories are written through the security rules in
+// firestore.rules, the same way the app saves them, so a change the rules reject makes this script fail.
 
 import { fileURLToPath } from 'node:url';
 import { initializeApp } from 'firebase/app';
 import {
-  Bytes, collection, connectFirestoreEmulator, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, writeBatch,
+  connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword, signOut, updateProfile,
+} from 'firebase/auth';
+import {
+  Bytes, collection, connectFirestoreEmulator, doc, getFirestore, serverTimestamp, setDoc, writeBatch,
 } from 'firebase/firestore/lite';
 import { loadEnv } from 'vite';
 
@@ -198,49 +202,103 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
   await batch.commit();
 }
 
-const target = process.argv[2] === '--preview' ? 'preview' : 'emulator';
-if (process.argv.length > 2 && process.argv[2] !== '--preview') {
-  throw new Error('Usage: node scripts/seed.js [--preview]');
+// Signs in as a demo account, creating it first with a confirmed email address.
+async function signInAs({ name, email }) {
+  if (auth.currentUser) await signOut(auth);
+  const { user } = await createUserWithEmailAndPassword(auth, email, PASSWORD);
+  await updateProfile(user, { displayName: name });
+  // The Auth emulator lets the "owner" token change any account, here to confirm the email address.
+  const response = await fetch(`http://${authEmulator}/identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
+    body: JSON.stringify({ localId: user.uid, emailVerified: true }),
+  });
+  if (!response.ok) throw new Error(`Could not confirm ${email}: ${await response.text()}`);
+  await user.reload();
+  await user.getIdToken(true);
+  return user;
 }
 
-const env = loadEnv(target, fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
+// Starts a group owned by the signed-in account, like createGroup() in src/group.js.
+async function startGroup(user, id, name) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'groups', id), { id, name, ownerId: user.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  batch.set(doc(db, 'groups', id, 'members', user.uid), memberFor(user));
+  await batch.commit();
+}
+
+function memberFor(user) {
+  return { uid: user.uid, name: user.displayName, email: user.email, joinedAt: serverTimestamp() };
+}
+
+// Invites an email address to a group the signed-in account owns, like createInvite(). Returns its ID.
+async function invite(user, groupId, groupName, email) {
+  const inviteRef = doc(collection(db, 'groups', groupId, 'invites'));
+  await setDoc(inviteRef, {
+    email, groupName, invitedBy: user.uid, invitedByName: user.displayName, createdAt: serverTimestamp(),
+  });
+  return inviteRef.id;
+}
+
+// Accepts an invite as the signed-in account, like acceptInvite().
+async function join(user, groupId, inviteId) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'groups', groupId, 'members', user.uid), { ...memberFor(user), invite: inviteId });
+  batch.delete(doc(db, 'groups', groupId, 'invites', inviteId));
+  await batch.commit();
+}
+
+const env = loadEnv('emulator', fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
 const projectId = env.VITE_FIREBASE_PROJECT_ID;
 const emulator = env.VITE_FIRESTORE_EMULATOR;
-// Local seeding can only target an emulator and a "demo-" project.
-if (target === 'emulator' && (!emulator || !projectId?.startsWith('demo-'))) {
-  throw new Error('.env.emulator must set VITE_FIRESTORE_EMULATOR and a "demo-" VITE_FIREBASE_PROJECT_ID');
-}
-// Cloud writes are limited to the explicitly configured test project.
-if (target === 'preview' && (emulator || projectId !== 'fast-app-2026')) {
-  throw new Error('Preview seeding is allowed only for fast-app-2026, with no Firestore emulator configured.');
+const authEmulator = env.VITE_AUTH_EMULATOR;
+// Only ever write to the emulators, and only to a "demo-" project, which can't exist outside them.
+if (!emulator || !authEmulator || !projectId?.startsWith('demo-')) {
+  throw new Error('.env.emulator must set VITE_FIRESTORE_EMULATOR, VITE_AUTH_EMULATOR and a "demo-" VITE_FIREBASE_PROJECT_ID');
 }
 
-const db = getFirestore(initializeApp({ apiKey: env.VITE_FIREBASE_API_KEY, projectId }));
-if (target === 'emulator') {
-  const [host, port] = emulator.split(':');
-  connectFirestoreEmulator(db, host, Number(port));
+const app = initializeApp({ apiKey: env.VITE_FIREBASE_API_KEY, projectId });
+const db = getFirestore(app);
+const [host, port] = emulator.split(':');
+connectFirestoreEmulator(db, host, Number(port));
+const auth = getAuth(app);
+connectAuthEmulator(auth, `http://${authEmulator}`, { disableWarnings: true });
+
+// The demo accounts all share one password. Ann leads Sam Smith's care team, with Jeff as a member;
+// Jeff and Mia each lead a small group of their own, so the groups' stories can be told apart.
+const ANN = { name: 'Ann Smith', email: 'ann@example.com' };
+const JEFF = { name: 'Jeff Smith', email: 'jeff@example.com' };
+const MIA = { name: 'Mia Smith', email: 'mia@example.com' };
+const PASSWORD = 'password';
+
+// The emulators start empty each time, but they could be left running between seeds.
+const existing = await signInWithEmailAndPassword(auth, ANN.email, PASSWORD).then(() => true, () => false);
+if (existing) {
+  console.log('The local database already has the demo accounts, so nothing was added.');
+  process.exit(0);
 }
 
-for (const group of [
-  { id: 'default', name: 'Default group' },
-  { id: 'family-a', name: 'Family A' },
-  { id: 'family-b', name: 'Family B' },
-]) {
-  const groupRef = doc(db, 'groups', group.id);
-  if (!(await getDoc(groupRef)).exists()) {
-    await setDoc(groupRef, {
-      ...group,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  }
-}
+const jeff = await signInAs(JEFF);
+await startGroup(jeff, 'family-a', 'Family A');
+for (const { story } of GROUP_STORIES.filter((g) => g.groupId === 'family-a')) await saveStory(db, story, 'family-a');
 
-const existing = await getDocs(query(collection(db, 'treatments', TREATMENT_ID, 'stories'), limit(1)));
-if (!existing.empty) {
-  console.log(`The ${target} database already has stories, so no sample stories were added.`);
-} else {
-  for (const story of STORIES) await saveStory(db, story, 'default');
-  for (const { groupId, story } of GROUP_STORIES) await saveStory(db, story, groupId);
-  console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories to the ${target} database.`);
-}
+const mia = await signInAs(MIA);
+await startGroup(mia, 'family-b', 'Family B');
+for (const { story } of GROUP_STORIES.filter((g) => g.groupId === 'family-b')) await saveStory(db, story, 'family-b');
+
+const ann = await signInAs(ANN);
+await startGroup(ann, 'default', 'Sam Smith');
+for (const story of STORIES) await saveStory(db, story, 'default');
+const jeffInvite = await invite(ann, 'default', 'Sam Smith', JEFF.email);
+await invite(ann, 'default', 'Sam Smith', 'dave@example.com'); // left pending
+const miaInvite = await invite(ann, 'default', 'Sam Smith', MIA.email); // left pending, to try joining
+
+await signOut(auth);
+await signInWithEmailAndPassword(auth, JEFF.email, PASSWORD);
+await join(auth.currentUser, 'default', jeffInvite);
+await signOut(auth);
+
+console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories in 3 groups, and these accounts (password "${PASSWORD}"):`);
+console.log(`  ${ANN.email}   leads Sam Smith's care team (Jeff is a member; Mia and dave@example.com are invited)`);
+console.log(`  ${JEFF.email}  member of Sam Smith, leads Family A`);
+console.log(`  ${MIA.email}   leads Family B. Her invite to Sam Smith: http://localhost:5173/?group=default&invite=${miaInvite}`);

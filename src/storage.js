@@ -1,9 +1,9 @@
 import {
-  Bytes, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, writeBatch,
+  Bytes, collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore/lite';
 import { createAudioCache } from './audioCache.js';
 import { db } from './firebase.js';
-import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
+import { isValidGroupId } from './group.js';
 
 // Stories are stored in Cloud Firestore. The project is on the free Spark plan,
 // which has no Cloud Storage bucket, so the audio itself goes into Firestore too:
@@ -14,7 +14,8 @@ import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
 //   treatments/demo/stories/{id}/chunks/{i} data: up to 1 MB of the audio (documents max out at 1 MiB)
 //
 // The audio is the name clip's bytes followed by the story clip's bytes; nameSize says where to split them.
-// There is no sign-in yet, so every story belongs to one hardcoded treatment, "demo".
+// Every story sits in one collection (the "demo" treatment) and names its group (care team) in `group`.
+// Only the group's members can read or change it (see firestore.rules), so every query filters by group.
 
 const TREATMENT_ID = 'demo';
 const CHUNK_SIZE = 1_000_000; // bytes per chunk document
@@ -22,33 +23,6 @@ const MAX_CHUNKS = 5; // must match firestore.rules
 const MAX_SIZE = CHUNK_SIZE * MAX_CHUNKS; // 5 MB, about 10 minutes of audio at 64 kbps
 
 const storiesRef = collection(db, 'treatments', TREATMENT_ID, 'stories');
-const groupsRef = collection(db, 'groups');
-
-// List the available groups for the home screen.
-export async function listGroups() {
-  const snapshot = await getDocs(groupsRef);
-  const groups = snapshot.docs.map((groupDoc) => {
-    const data = groupDoc.data();
-    if (
-      !isValidGroupId(groupDoc.id)
-      || data.id !== groupDoc.id
-      || typeof data.name !== 'string'
-      || !data.name.trim()
-      || typeof data.createdAt?.toDate !== 'function'
-      || typeof data.updatedAt?.toDate !== 'function'
-    ) {
-      throw new Error(`Group "${groupDoc.id}" is missing valid group details.`);
-    }
-    return { id: groupDoc.id, name: data.name.trim(), createdAt: data.createdAt, updatedAt: data.updatedAt };
-  });
-  return groups.sort((a, b) => {
-    if (a.id === b.id) return 0;
-    if (a.id === DEFAULT_GROUP_ID) return -1;
-    if (b.id === DEFAULT_GROUP_ID) return 1;
-    return a.name.localeCompare(b.name);
-  });
-}
-
 // Stories' audio stays in memory (RAM) once loaded, up to 200 MB in total (a safe margin for
 // phone browsers), so replays don't download again; past that, the least recently used is dropped.
 const audioCache = createAudioCache(200 * 1024 ** 2);
@@ -102,15 +76,16 @@ export async function addStory({ groupId, name, story, ...details }) {
   return storyRef.id;
 }
 
-// Replace a saved story's audio with an edited version, keeping its title and other details.
-// Saved stories never change, so the story is saved again under a new id and the old one deleted,
-// in one batch: either both happen or neither does. Returns the new id.
+// A story can only be changed from its own group's screens.
 function assertStoryGroup(story, groupId) {
-  if (!isValidGroupId(groupId) || (story.group === undefined ? DEFAULT_GROUP_ID : story.group) !== groupId) {
+  if (!isValidGroupId(groupId) || story.group !== groupId) {
     throw new Error('This story does not belong to the current group. Reload the story list and try again.');
   }
 }
 
+// Replace a saved story's audio with an edited version, keeping its title and other details.
+// Saved stories never change, so the story is saved again under a new id and the old one deleted,
+// in one batch: either both happen or neither does. Returns the new id.
 export async function replaceStoryAudio(old, { name, story }, groupId) {
   assertStoryGroup(old, groupId);
   const details = {
@@ -119,7 +94,7 @@ export async function replaceStoryAudio(old, { name, story }, groupId) {
     relationship: old.relationship,
     affect: old.affect,
     setNumber: old.setNumber,
-    group: old.group === undefined ? DEFAULT_GROUP_ID : old.group,
+    group: old.group,
   };
   const batch = writeBatch(db);
   const { storyRef, audio } = await queueStory(batch, details, name, story);
@@ -131,16 +106,14 @@ export async function replaceStoryAudio(old, { name, story }, groupId) {
 }
 
 // List one group's stories, oldest first (details only, no audio).
-// Older documents without a group belong to the default group and are normalized in memory.
+// The rules only allow a query that asks for one group's stories, so the filter is in the query.
+// Sorting here, not with orderBy, saves a composite index.
 export async function listStories(groupId) {
   if (!isValidGroupId(groupId)) throw new Error('Choose a valid group before loading stories.');
-  const snapshot = await getDocs(query(storiesRef, orderBy('createdAt')));
+  const snapshot = await getDocs(query(storiesRef, where('group', '==', groupId)));
   return snapshot.docs
-    .map((d) => {
-      const data = d.data();
-      return { id: d.id, ...data, group: data.group === undefined ? DEFAULT_GROUP_ID : data.group };
-    })
-    .filter((story) => story.group === groupId);
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
 }
 
 // Download a story's audio (both clips, back to back) as one Blob, or reuse it if already loaded.

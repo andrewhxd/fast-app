@@ -26,26 +26,25 @@ index.html → src/main.jsx → src/App.jsx
 
 ## Screens and navigation (`src/App.jsx`)
 
-- `App` holds the current screen as a plain object, for example `{ name: 'record', affect: 'happy', setNumber: 1 }`.
-The screens are `home`, `sets`, `stories` (Listen), `record` and `edit`.
+- `App` waits for Firebase to say who is signed in (`useUser()` in `src/auth.js`), shows `SignIn` if nobody is, and otherwise renders `CareApp` keyed by the uid, so nothing carries over from one account to the next.
+- `CareApp` loads the person's groups (`listMyGroups()`), then shows, in order: the join screen if the URL has an invite for a group they aren't in, Start a care team if they have no group, or the app for the current group.
+- `CareApp` holds the current screen as a plain object, for example `{ name: 'record', affect: 'happy', setNumber: 1 }`.
+The screens are `home`, `sets`, `stories` (Listen), `record`, `edit`, `team` (Care team), `invite`, `teams` (Your care teams) and `newTeam`.
 - Every screen change is a browser history entry (`history.pushState`), so the phone's Back button and gesture work.
 `depth` counts the app's own screens behind the current one, so Back never leaves the app.
-- The current group comes from `?group=<groupId>`; no parameter or an empty value means `default`.
-Selecting a group on Home pushes a history entry with the new URL, so Back and Forward restore the prior group.
-- `listGroups()` loads `groups/{groupId}` documents for the Home selector.
-If the URL points to an unknown group, the app hides the story screens and shows a group recovery message.
+- The current group comes from `?group=<groupId>`; without it, the app opens the group used last on that device (kept in `localStorage` per account), or the first.
+Switching groups pushes a history entry with the new URL, so Back and Forward restore the previous group.
+If the URL points to a group the person isn't in, the app shows Your care teams with a message instead.
 - After a reload the app reopens the last screen, except that `record` and `edit` fall back to the screen they came from: a recording in progress can't survive a reload.
 - `record` and `edit` are "focused": a narrower page, and on a computer the sidebar is locked so a recording isn't lost by a stray click.
 - To add a screen: add its name to the `screen` handling in `App`, decide its menu section in `SECTION`, whether it's in `FOCUSED`, and give it a `NavBar` (phone) like the others.
 
 ## Data flow
 
-- `App` loads group documents once and checks that the URL's group exists before showing story content.
-The Home selector changes the group and URL together.
-- `listStories(groupId)` returns only stories for the current group.
-It normalizes legacy documents without `group` to `default` in memory, without migrating the stored documents.
+- `CareApp` loads the person's groups once, and again after starting, joining or leaving one.
+- `listStories(groupId)` queries only the current group's stories, the only query the rules allow.
 - `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
-`replaceStoryAudio()` keeps the original group; stories without a group are treated as `default` when edited.
+`replaceStoryAudio()` keeps the original group.
 - `App` loads the selected group's story details and passes them down; `summarizeSets()` turns them into each set's count and total.
 Changing groups clears the visible list while loading and ignores stale requests, so one group's stories cannot appear under another group's URL.
 - `StoryLibrary` preloads audio only for its current story array; set and individual players use those same filtered stories.
@@ -57,17 +56,24 @@ Totals are never computed from stale data on the same device.
 - Audio is loaded separately from the details, per story, and kept in memory by `src/audioCache.js` (up to 200 MB, least recently used dropped first).
 Listen starts downloading every story's audio as soon as it opens, because phones only let audio start directly from a tap, not after a download finishes.
 
+## Sign-in and care teams (`src/auth.js`, `src/group.js`)
+
+- Firebase Authentication keeps the account; Firestore Lite sends the signed-in person's token with every request, so the rules know who is asking.
+- Google sign-in uses a popup, which works on phones too as long as it opens straight from a tap.
+The redirect flow would need `authDomain` set to the app's own domain to work in Safari and Chrome.
+- A new email account gets a confirmation email; `checkEmailVerified()` reloads the account and its token, since the rules read `email_verified` from the token.
+- Each person finds their groups with a collection group query on `members` (`where('uid', '==', uid)`), which the rules allow only for their own uid.
+- An invite's ID is the secret in its link.
+The rules only let the person it's for (by email) read it, so "for someone else" and "canceled" look the same to the app.
+- The owner is the group's `ownerId`, not a field on the member, so there's one place to change when the lead is handed over.
+
 ## Storage (`src/storage.js` and `firestore.rules`)
 
 The data model is in [AGENTS.md](../AGENTS.md#data-model).
 The rules behind it:
 
-- `listGroups()` reads the top-level `groups` collection.
-Group documents have `id`, `name`, `createdAt` and `updatedAt`; the local seed creates `groups/default`, `groups/family-a` and `groups/family-b`, with 11 default stories and one test story in each family group.
-Groups are publicly readable and valid documents may be created, with no sign-in or access control.
-- New stories require a valid `group` ID that matches an existing `groups/{groupId}` document.
-The public demo still has no sign-in or membership checks.
-Legacy stories may omit `group`; they remain readable and movable, and audio replacement assigns them to `default`.
+- **Every story names its group.** Only members of that group can read or change it, and new stories must name a group the writer is in.
+Stories without a `group` (saved before groups existed) can't be read by anyone until they're given one.
 - **A story's audio is chunked.** Firestore documents max out at 1 MiB, so a story's audio is split into 1 MB chunk documents (at most 5, so 5 MB per story).
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
 - **Writes are atomic batches.** A story and all its chunks are written in one batch, and deleted in one batch.
@@ -147,16 +153,20 @@ Every effect must clean up after itself (the existing ones use a `cancelled` fla
 - **The microphone needs HTTPS** on any device other than `localhost`; that's what `npm run dev:mobile` is for.
 - **Batch limits**: a Firestore request is at most 10 MiB and 500 writes, which bounds what one batch can hold.
 - **Rules changes** are live in the emulator as soon as you save `firestore.rules`, but reach the live database only when deployed.
+- **Indexes**: the emulator runs any query without an index, but a real project refuses one that needs an index it doesn't have.
+Add it to `firestore.indexes.json` and check new queries on the dev project (`npm run deploy:dev`) before going live.
 - **Firestore Lite** has no `onSnapshot`; don't import from `firebase/firestore` (the full SDK) without a reason, it's much larger.
 
 ## Testing
 
-There are no automated tests or linter yet.
+The security rules have tests (`npm run test:rules`); there are no other automated tests or linter yet.
 Check every change by using the app with `npm run dev:local`:
 
 - On a phone-sized window (about 390 × 844) and a computer-sized one (1280 × 900 or wider).
 - In light and dark mode.
 - For recording in an automated Chromium, launch it with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream` so it gets a fake microphone without a permission prompt.
-- When the data model or rules change, the seed is a quick check: `npm run dev:local` fails if the rules reject the sample stories.
+- When the rules change, run `npm run test:rules` (and add tests for the change), and `npm run dev:local`, whose seed fails if the rules reject its accounts, groups or stories.
+- To sign in locally, use a demo account from the README, or "Continue with Google" and add a made-up account on the Auth emulator's page.
+Confirmation and password reset links are in the Auth tab of the Emulator UI.
 
-Good first additions would be unit tests for `src/stories.js` and `src/audioEdit.js`'s planning functions (Vitest fits Vite), and rules tests against the emulator with `@firebase/rules-unit-testing`.
+Good next additions would be unit tests for `src/stories.js` and `src/audioEdit.js`'s planning functions (Vitest fits Vite).

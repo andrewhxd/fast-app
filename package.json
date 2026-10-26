@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:preview": "vite --mode preview",
     "dev:mobile": "vite --host --mode mobile",
-    "dev:local": "firebase emulators:exec --only firestore --ui --project demo-fast-app \"node scripts/seed.js && vite --mode emulator\"",
-    "seed:preview": "node scripts/seed.js --preview",
+    "dev:remote": "vite --mode dev",
+    "dev:local": "firebase emulators:exec --only firestore,auth --ui --project demo-fast-app \"node scripts/seed.js && vite --mode emulator\"",
     "build": "vite build",
-    "build:preview": "vite build --mode preview",
-    "deploy:preview": "npm run build:preview && firebase hosting:channel:deploy group-audio-management --project fast-app-2026 --expires 30d",
-    "preview": "vite preview"
+    "build:dev": "vite build --mode dev",
+    "deploy:dev": "vite build --mode dev && firebase deploy --only firestore,hosting --project dev",
+    "deploy:branch": "vite build --mode dev && node scripts/deploy-branch.js",
+    "preview": "vite preview",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fast-app \"node --test tests/rules.test.js\""
   },
   "dependencies": {
     "@fontsource/figtree": "^5.3.0",
@@ -23,6 +24,7 @@
     "wasm-media-encoders": "^0.7.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.0",
     "firebase-tools": "^15.33.0",

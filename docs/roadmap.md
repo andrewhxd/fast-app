@@ -4,45 +4,40 @@ What's left to build, in a sensible order, with suggested approaches.
 These are suggestions, not decisions: check with the project owner before starting a big piece, and update this file when a decision is made.
 [requirements.md](requirements.md) has the full requirements for each feature.
 
-## 1. Sign-in, treatments and access
+## 1. Access levels and the rest of setup
 
-Everything else depends on this, and until it exists anyone with the link can read and delete stories.
+Sign-in, care teams (groups), invite links, and two roles (the lead caregiver who owns a group, and members) are built.
+What the project doc asks for beyond that:
 
-- **Accounts**: Firebase Authentication with email and password (slide 4: email as the username, password reset).
-- **Treatments**: replace the hardcoded `demo` treatment (`TREATMENT_ID` in `src/storage.js` and `isDemoTreatment()` in `firestore.rules`) with real treatment documents.
-A possible model:
-
-```
-treatments/{treatmentId}                  patient's first and last name, lead caregiver uid, clinician uid,
-                                          survey answers (or a summary, e.g. hearing aid), approvedAt, createdAt
-treatments/{treatmentId}/members/{uid}    email, name, access: admin | clinician | record | play, joinedAt
-treatments/{treatmentId}/invites/{id}     email, access, invitedBy, createdAt
-treatments/{treatmentId}/stories/...      as now, plus who recorded each story
-```
-
-- **Rules**: every read and write checks membership and access with `get()` on `members/{request.auth.uid}`.
-Only the lead caregiver (or an admin) changes members and access, and nobody can raise their own access.
-- **Invites by email** need something to send the email.
-Firebase Auth's email link sign-in can do it on the free plan; custom invite emails need Cloud Functions or the Trigger Email extension, which need the paid Blaze plan.
-- **Screens**: sign in, create account, reset password, the setup screen (slide 5), and the Administration screen (slide 6).
-The design canvas has a "Coming later" area for these designs.
+- **Access levels** (slide 4): administrator, clinician, storyteller and player, instead of one "member" role.
+Add an `access` field to `groups/{groupId}/members/{uid}` and to invites, check it in `firestore.rules` for each action, and let the lead caregiver change it.
+The design canvas's first accounts proposal had these screens and a "Who can do what" table (storytellers edit only their own stories, so stories need a `recordedBy` uid).
+Nobody may raise their own access; add a rules test for every rule.
+- **Handing over the lead** and changing the clinician (slide 4).
+- **The setup questions** (slide 3): the lead caregiver's relationship to the patient, and whether a clinician takes part.
+- **Invites that expire** (for example after 14 days), checked by the rules with an `expiresAt` timestamp.
+- **Invite emails**: today the lead caregiver sends the link themselves.
+Emailing it from the app needs Cloud Functions or the Trigger Email extension, which need the paid Blaze plan.
+- **The live database**: before deploying these rules, turn on the Google and Email/Password providers in the Firebase console, create the lead caregiver's group for the existing stories, and give every story without a `group` field that group's ID (a one-off update with admin access), since the rules hide stories without one.
+- **Storage paths**: stories still live in one `treatments/demo/stories` collection with a `group` field.
+Moving them to `groups/{groupId}/stories` would make the paths match the access, at the cost of a data migration.
 
 ## 2. Qualification survey
 
 - The survey in [requirements.md](requirements.md#qualification-survey-slides-7-to-9---not-built) gates creating a treatment.
-- Keep the answers on the treatment; the pre-session checklist needs to know about a hearing aid.
+- Keep the answers on the group (the care team); the pre-session checklist needs to know about a hearing aid.
 - Confirm the inverted-looking branch in question 2 with the client first.
 
 ## 3. Clinician comments and approval
 
 - Comments on a story or a set, from people with clinician access (slide 19).
-- The approval checklist (slide 17), which sets `approvedAt` on the treatment.
+- The approval checklist (slide 17), which sets `approvedAt` on the group.
 - After approval, the rules must reject every story create, update and delete, and the interface hides recording and editing.
 Decide with the client whether approval can be undone.
 
 ## 4. Playing sessions
 
-- A session record per play, for example `treatments/{id}/sessions/{id}` with the set, who played it, start and end times, and both checklists' answers.
+- A session record per play, for example `groups/{id}/sessions/{id}` with the set, who played it, start and end times, and both checklists' answers.
 Progress on Home (today's sessions, days completed, 168 in all) is computed from these.
 - Pick the set at random from those not yet played today; shuffle the stories within it.
 Decide what "today" means (the treatment's time zone) and handle a session that's started but never finished.

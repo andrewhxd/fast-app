@@ -63,15 +63,16 @@ Commits are authored by the repository owner only.
 
 ### Data and Firebase safety
 
-- Production uses Firebase project `fast-app-cs499`; the isolated preview environment uses `fast-app-2026`.
+- The app has two Firebase projects: `fast-app-cs499` (live) and `fast-app-cs499-dev` (dev, for testing branches; alias `dev`).
+They share nothing: each has its own database, accounts and site.
 Never deploy rules, hosting or anything else to `fast-audio-playback-demo`, which is a separate audio recorder demo that this app grew out of.
-- Production deploys must target `fast-app-cs499` explicitly.
-Preview deploys must use `npm run deploy:preview`, which targets the `group-audio-management` channel in `fast-app-2026` explicitly.
-Do not use a bare `firebase deploy` command.
-- `npm run seed:preview` writes sample data only to `fast-app-2026`; it is guarded by the project ID in `.env.preview`.
+- Every deploy names its project (`--project fast-app-cs499` or `--project dev`); never run a bare `firebase deploy`.
+Try changes on the dev project (`npm run deploy:branch` or `npm run deploy:dev`) before the live one, and deploy to the live project only when asked.
+Before a live deploy, confirm the target really is `fast-app-cs499`.
 With the Firebase MCP server, change the project directory and the active project in two separate calls, then check `firebase_get_environment` again: setting both in one call once deployed this app's rules to the wrong project.
 - Test with `npm run dev:local`, which uses a local Firestore emulator with sample stories and can't reach live data.
 `npm run dev` and `npm run dev:mobile` use the live database, so deleting a story there deletes it for everyone.
+The live project still runs the version from before sign-in (its rules, its data, and no sign-in providers), so this code only works there once it's moved over (see [docs/roadmap.md](docs/roadmap.md)); until then use `npm run dev:local` or `npm run dev:remote`.
 When cleaning up test data on the live database, delete only stories titled `... (delete me)`.
 Keep the owner's own test story "Hello Hi Test".
 
@@ -96,26 +97,26 @@ Requires Node.js 20.19+ or 22.12+.
 
 ```bash
 npm install
-npm run dev:local    # http://localhost:5173, against a local Firestore emulator with sample stories
-npm run dev          # http://localhost:5173, against the production database
-npm run dev:preview  # http://localhost:5173, against the test project fast-app-2026
-npm run seed:preview # write the emulator's sample groups and stories to fast-app-2026
+npm run dev:local    # http://localhost:5173, against local Firestore and Auth emulators with demo accounts and stories
+npm run dev          # http://localhost:5173, against the live database
 npm run dev:mobile   # HTTPS on the local network, for testing on a phone (live database)
-npm run build        # production build into dist/
-npm run build:preview # preview build into dist/
-npm run deploy:preview # deploy preview Hosting channel in fast-app-2026
+npm run dev:remote   # http://localhost:5173, against the dev Firebase project
+npm run build        # production build into dist/, for the live project
+npm run deploy:dev   # build for the dev project and deploy it to https://fast-app-cs499-dev.web.app
+npm run deploy:branch # build for the dev project and deploy it to a 7-day preview address named after the branch
+npm run test:rules   # the security rules tests (tests/rules.test.js), against the Firestore emulator
 ```
 
-`npm run dev:local` starts the Firestore emulator (project `demo-fast-app`, with the real `firestore.rules`), runs `scripts/seed.js`, then starts Vite in `emulator` mode.
+`npm run dev:local` starts the Firestore and Auth emulators (project `demo-fast-app`, with the real `firestore.rules`), runs `scripts/seed.js`, then starts Vite in `emulator` mode.
 It needs Java 21 or newer.
 Ctrl+C stops all of it, and the local data resets on the next start.
-The Emulator UI at http://127.0.0.1:4000 shows the local database.
+The Emulator UI at http://127.0.0.1:4000 shows the local database and accounts, and the links in emails Firebase would have sent.
 The seed writes through the security rules, the way the app does, so a data model change the rules reject makes it fail.
 
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
-There is no test suite or linter yet.
+The security rules have tests (`npm run test:rules`); there is no other test suite or linter yet.
 Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
@@ -123,18 +124,43 @@ Check changes by running the app with `npm run dev:local` and using it.
 Only people added to the Firebase project can deploy.
 The Firebase CLI is a dev dependency, so `npx firebase` uses the version in `package-lock.json`.
 
+Try changes on the **dev project** first (`fast-app-cs499-dev`, https://fast-app-cs499-dev.web.app).
+It has its own database, accounts and site, so nothing there touches the live app:
+
+```bash
+npm run deploy:dev
+```
+
+For a branch, `npm run deploy:branch` gives it a temporary address of its own on the dev project (a preview channel named after the branch, for 7 days), without replacing the dev site.
+Put that address in the pull request.
+A preview channel shares the dev project's database and rules, so a branch that changes `firestore.rules` or `firestore.indexes.json` needs `npm run deploy:dev` too, which changes them for everyone using the dev project.
+
+The **live project**, only when asked:
+
 ```bash
 npm run build
 npx firebase deploy --only firestore,hosting --project fast-app-cs499
 ```
 
+`npm run build` must be the last build before a live deploy: `dist/` from `npm run build:dev` points at the dev project.
+
 ## What the app does
 
-- **Home**: choose a group by its name, see how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
-Set totals and the Listen screen include only stories from the selected group.
-The selected group ID is kept in the URL as `?group=<groupId>`; missing or empty means `default`.
-An unknown group shows a recovery message instead of the story sets.
-On a phone, **Menu** (top right) opens Home, Record a Story and Listen to Stories.
+- **Sign in**: "Continue with Google", or "Continue with email" (sign in, create an account, or reset the password).
+A new email account gets an email to confirm its address, which it needs before joining a care team.
+- **Care teams** (a "group" in the code, a "treatment" in the project doc): one patient's care team.
+Someone with no care team starts one by entering their loved one's name, and becomes its **lead caregiver** (the group's owner).
+Everyone else is a **member**, who can record, listen to, edit and move the team's stories, and leave the team.
+For now there are only these two roles; the doc's administrator, clinician, storyteller and player levels aren't built.
+- **Care team screen**: the lead caregiver, the family and friends, and (for the lead caregiver) invites not yet accepted.
+The lead caregiver invites someone by email address, gets a link to send from their own phone (Share or Copy), and can copy an invite's link again, cancel it, or remove a member.
+- **Invite links** (`?group=<groupId>&invite=<inviteId>`) open a join screen after signing in: who invited you to whose care team, and **Join**.
+Only someone signed in with the invited email address, confirmed, can use it, and joining uses it up.
+- **Your care teams**: switch between the care teams you're on, or start another.
+The current one is in the URL as `?group=<groupId>`; without it the app opens the one used last on that device.
+- **Home**: whose care team it is, how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
+Set totals and the Listen screen include only the current care team's stories.
+On a phone, **Menu** (top right) shows your account and opens Home, Record a Story, Listen to Stories, Care team, Your care teams and Sign out.
 - **Record a story**: pick a set; each shows its stories, total and time left to go, with a bar from 0:00 to 11:00 and the 9:00 to 11:00 target shaded.
 A set in range shows "Ready" and can't take more stories.
 - **Recording a story**, in 3 steps (shown under the set's name at the top):
@@ -154,7 +180,7 @@ An **Edit** button opens the story editor.
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
 An edited saved story replaces the old one in one step, so it's never half saved.
-- **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and only the selected group's stories.
+- **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and its stories.
 Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 **Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
 A move or swap is only offered when both sets stay at or under 11:00.
@@ -173,20 +199,18 @@ Recording and editing use a narrower, focused page (42rem), and the sidebar is l
 The colors carry meaning: peach for happy stories, sky blue for challenging stories, mint for a set in range, indigo for actions, and red for recording and deleting.
 It follows the system's light or dark setting, with both palettes defined once at the top of `src/styles.css`.
 Buttons are at least 44 px tall.
-The design canvas linked above has every screen on phone and computer, the reasoning behind each decision, and a "Coming later" area for the account and admin designs.
+The design canvas linked above has every screen on phone and computer, the reasoning behind each decision, and the accounts screens as built (sign-in, care teams and invites).
 [docs/design.md](docs/design.md) has the same decisions in writing, plus the color meanings and wording rules.
 
 ## Not built yet
 
 [docs/roadmap.md](docs/roadmap.md) has suggested approaches for each of these.
 
-- Sign-in, the setup screen, roles and invites.
-There is one hardcoded treatment (`demo`), and **anyone with the link can see and delete its stories**.
-Don't record real patient names or real family stories until sign-in exists.
-- Admin accounts that control who can record, edit and play (doc slides 4 and 6).
+- Access levels beyond lead caregiver and member: administrator, clinician, storyteller (editing only their own stories) and player (doc slides 4 and 6), handing over the lead, renaming or deleting a care team, and invites that expire.
+- The setup questions about a clinician (slide 3).
 - The eligibility survey.
 - Editing a story's title, storyteller or relationship after it's saved.
-- Clinician comments and approval (both need sign-in), and automatically regrouping stories to fit the targets.
+- Clinician comments and approval, and automatically regrouping stories to fit the targets.
 - Playing story sets to the patient, the checklists, progress tracking and reminders.
 
 ## Firebase
@@ -194,40 +218,43 @@ Don't record real patient names or real family stories until sign-in exists.
 - **Project:** `fast-app-cs499` ("FAST app"), on the free Spark plan.
 - **Web app:** "FASTapp".
 Its config is in `.env`; it identifies the project and is not a secret.
+- **Authentication:** Firebase Authentication with the Google and Email/Password providers (both free on Spark).
+They must be turned on in the Firebase console before the sign-in screen works on the live site.
 - **Database:** Cloud Firestore, Standard edition, location `nam5`, used through Firestore Lite (one-off reads and writes, no live listeners).
 - **Hosting:** https://fast-app-cs499.web.app (serves the `dist` build).
+- **Dev project:** `fast-app-cs499-dev` ("FAST app dev", alias `dev` in `.firebaserc`), at https://fast-app-cs499-dev.web.app, with the same rules, indexes and sign-in providers, and its own data.
 
 ### Configuration
 
 `src/firebase.js` reads the Firebase config from Vite environment variables (`VITE_FIREBASE_*`).
-- `.env` (committed): the shared production `fast-app-cs499` project, used by `npm run dev`, `npm run dev:mobile` and `npm run build`.
-- `.env.preview` (committed): the test `fast-app-2026` project, used by `npm run dev:preview` and `npm run build:preview`.
+- `.env` (committed): the shared `fast-app-cs499` project, used by `npm run dev`, `npm run dev:mobile` and `npm run build`.
+- `.env.dev` (committed): the dev project, for `npm run build:dev`, `npm run deploy:dev` and `npm run dev:remote` (Vite's `dev` mode).
 - `.env.local` (not committed): a fork's own project, overriding `.env`.
-- `.env.emulator` (committed): `npm run dev:local`, with project `demo-fast-app` and `VITE_FIRESTORE_EMULATOR` set, which connects to the emulator and adds "(local)" to the page title.
+- `.env.emulator` (committed): `npm run dev:local`, with project `demo-fast-app` and `VITE_FIRESTORE_EMULATOR` and `VITE_AUTH_EMULATOR` set, which connect to the emulators and add "(local)" to the page title.
 It takes priority over `.env.local`, so local runs never reach a real project.
 
-`.firebaserc` names `fast-app-cs499` as the default project and `fast-app-2026` as the `preview` alias.
-Preview Hosting deploys still specify the test project explicitly in the npm script.
-
-The emulator's ports are in `firebase.json`.
+The emulators' ports are in `firebase.json`.
+The seed's demo accounts (`ann@`, `jeff@` and `mia@example.com`, password `password`) are listed in the README.
 The README explains how to run a fork on its own Firebase project.
 
 ### Data model
 
 ```
-groups/{groupId}                         id, name, createdAt, updatedAt
+groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt
+groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
+groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt
 treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
 
-Group IDs use lowercase letters, numbers and hyphens.
-The local seed creates the `default`, `family-a` and `family-b` groups, with stories in each so group-specific lists and playback can be checked.
-The app reads group names and changes groups from the Home screen, writing the selection to `?group=<groupId>`.
-`listStories(groupId)` returns only that group's stories; older stories without `group` are normalized in memory as `default` and are never migrated.
-New stories store their selected group ID in `group`, and editing preserves that group.
-The public demo still has no sign-in or membership checks.
+A group is one patient's care team.
+Group IDs use lowercase letters, numbers and hyphens; the app makes 20 random ones, and the seed uses `default`, `family-a` and `family-b`.
+A group and its owner's member document are created in one batch, and joining writes the member document and deletes the invite in one batch.
+Each person finds their groups with a collection group query on `members` by `uid`, which needs the index in `firestore.indexes.json` (the emulator doesn't, so only a real project shows it missing).
+Every story names its group in `group`, and `listStories(groupId)` queries `where('group', '==', groupId)`.
+Stories saved before groups existed (on the live database) have no `group` and can't be read until a one-off update gives them one.
 
 Cloud Storage needs the paid Blaze plan, so the audio is stored in Firestore, split into 1 MB chunk documents.
 The name clip and the story clip are stored back to back, and `nameSize` says where to split them.
@@ -239,10 +266,13 @@ A full treatment (4 sets of about 10 minutes) is roughly 20 MB, so the free 1 Gi
 
 ### Security rules
 
-`firestore.rules` only allows the `demo` treatment, requires every field with the right type and limits (including the 5:00 story limit, counting the name clip), saves a story only together with all of its audio, and deletes a story only together with its audio.
-The only edit allowed is moving a story: changing `setNumber` between 1 and 2, with every other field (including the affect) unchanged.
+Every request must be signed in.
+Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
+Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
+Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
+Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edit is moving a story (`setNumber` between 1 and 2).
 Everything else is denied.
-The rules are a prototype and get replaced with per-treatment access once sign-in exists.
+`npm run test:rules` checks all of this; add a test with every rules change.
 
 ## Code map
 
@@ -262,14 +292,20 @@ The rules are a prototype and get replaced with per-treatment access once sign-i
 - `src/ClipPlayer.jsx`: plays several clips back to back as one, as a full player or a compact row.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
-- `src/group.js`: the default group ID and group ID validation.
-- `src/storage.js`: reads groups, and saves, lists, loads, moves, swaps, replaces (after an edit) and deletes stories in Firestore.
+- `src/auth.js`: signing in and out (Google, email and password), the `useUser()` hook, and friendly sign-in error messages.
+- `src/group.js`: care teams in Firestore: listing yours, starting one, members, invites, joining, removing and leaving.
+- `src/SignIn.jsx`: the sign-in screen (with its welcome panel on a computer).
+- `src/JoinGroup.jsx`: the screen an invite link opens.
+- `src/CareTeam.jsx`: the Care team screen and the Invite someone screen.
+- `src/CareTeams.jsx`: the Your care teams and Start a care team screens.
+- `src/storage.js`: saves, lists, loads, moves, swaps, replaces (after an edit) and deletes stories in Firestore.
 - `src/firebase.js`: connects to Firebase with the config from the `.env` files, or to the emulator.
 - `src/audio.js`: picks a recording format the browser supports.
 - `src/icons.jsx`: the small inline icons.
 - `src/styles.css`: the stylesheet, with light and dark colors defined once at the top and the computer layout at the end.
-- `scripts/seed.js`: fills the local emulator with sample stories (the ones in the design canvas), with generated voice-like WAV audio.
+- `scripts/seed.js`: fills the local emulators with demo accounts, care teams, invites and sample stories (the ones in the design canvas), with generated voice-like WAV audio.
 - `firestore.rules`: the security rules, which are also the data model's schema.
+- `tests/rules.test.js`: the security rules tests.
 - `docs/`: onboarding docs (requirements, architecture, design, roadmap).
 
 ## Third-party audio code

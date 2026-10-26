@@ -318,14 +318,6 @@ button:disabled {
   color: var(--muted);
 }
 
-.group-card .field {
-  gap: 0.25rem;
-}
-
-.group-card .error {
-  margin: 0;
-}
-
 .card-text {
   margin: 0;
   line-height: 1.45;
@@ -1486,6 +1478,208 @@ button:disabled {
   }
 }
 
+/* ---------- Signing in and care teams ---------- */
+
+/* A page of its own, without the menu or sidebar: signing in, an invite, the first care team. */
+.screen.solo .page {
+  width: 100%;
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.team-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+/* A text button inside a sentence, e.g. "Switch" or "Create an account". */
+.link-button {
+  min-height: 2.75rem;
+  padding: 0;
+  border: none;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+}
+
+.team-line .link-button {
+  min-height: 0;
+}
+
+.sign-in-options,
+.sign-in-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.sign-in-form .field {
+  gap: 0.375rem;
+}
+
+/* "or", between two lines. */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--faint);
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--wave-light);
+}
+
+.welcome-panel {
+  display: none;
+}
+
+/* A person or a care team in a list: initials, name, a second line, and options. */
+.person-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.5rem 0.375rem 0.5rem 0.875rem;
+  border: none;
+  text-align: left;
+  background: none;
+  box-sizing: border-box;
+}
+
+.person-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
+}
+
+.person-text strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.person-text > span {
+  overflow: hidden;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  flex: none;
+}
+
+.avatar-0 {
+  color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.avatar-1 {
+  color: var(--happy-text);
+  background-color: var(--happy-bg);
+}
+
+.avatar-2 {
+  color: var(--challenging-text);
+  background-color: var(--challenging-bg);
+}
+
+.avatar-3 {
+  color: var(--done-text);
+  background-color: var(--done-bg);
+}
+
+.avatar-pending {
+  color: var(--faint);
+  background-color: var(--well);
+}
+
+.current-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.current-mark .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.row-chevron {
+  display: flex;
+  margin-right: 0.5rem;
+  color: var(--faint);
+}
+
+.story-actions.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.story-actions.double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* An invite link, shown whole so it can be checked or selected. */
+.link-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.menu-account {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  padding: 0.625rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.375rem;
+}
+
+.menu-account span,
+.sidebar-account span {
+  overflow: hidden;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.menu hr {
+  width: 100%;
+  margin: 0.375rem 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
 /* ---------- Computer ---------- */
 
 /* A wide window: the sidebar replaces the Menu button and Back, the sets sit in two columns
@@ -1642,6 +1836,121 @@ button:disabled {
   button.story-row:hover:not(:disabled, .selected),
   button.add-row:hover:not(:disabled),
   button.tool-row:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--primary-soft) 50%, transparent);
+  }
+
+  /* The sidebar's bottom: the current care team, then the signed-in account. */
+  .sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+
+  .sidebar-team {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.125rem 0.5rem;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 0.875rem;
+    text-align: left;
+    background-color: var(--bg);
+  }
+
+  .sidebar-team > span:first-child {
+    grid-column: 1 / -1;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  .sidebar-team strong {
+    overflow: hidden;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar-switch {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--primary);
+  }
+
+  .sidebar-team:hover:not(:disabled) {
+    background-color: var(--primary-soft);
+  }
+
+  .sidebar-team:disabled {
+    opacity: 0.45;
+  }
+
+  .sidebar-account {
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+    min-width: 0;
+    padding: 0 0.75rem;
+  }
+
+  .sidebar-footer .pill-small {
+    align-self: flex-start;
+    margin-left: 0.25rem;
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+
+  /* Pages of their own: a centered column, and when signing in, a welcome panel beside it. */
+  .screen.solo .page {
+    max-width: 28rem;
+  }
+
+  .screen.solo .navbar .wordmark:not(.desktop-hidden) {
+    display: inline;
+  }
+
+  .welcome-panel {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex: 0 1 34rem;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 2.5rem;
+    height: 100dvh;
+    padding: 3rem;
+    color: var(--happy-text);
+    background-color: var(--happy-bg);
+    box-sizing: border-box;
+  }
+
+  .welcome-panel .wordmark {
+    font-size: 1.5rem;
+  }
+
+  .welcome-headline {
+    margin: 0;
+    font-size: 2.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .welcome-text {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+
+  .welcome-panel + .page {
+    align-self: center;
+  }
+
+  .team-page {
+    max-width: 42rem;
+  }
+
+  button.person-row:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--primary-soft) 50%, transparent);
   }
 }

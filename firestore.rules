@@ -4,29 +4,55 @@ rules_version = '2';
 // Assumed Data Model
 // ===============================================================
 //
-// The FAST app prototype, with production in fast-app-cs499 and isolated preview data in fast-app-2026.
-// There is no sign-in yet (requested by the owner), so every request is unauthenticated.
-// Anyone can list, play, save, move, and delete stories. Because of that, these rules strictly
-// validate what can be written and deny everything else.
+// The FAST app prototype, in its own Firebase project (fast-app-cs499).
+// Everyone signs in with Firebase Authentication (Google, or an email address and a password).
+// Stories belong to a group (a care team for one patient), and only the group's members can
+// read or change them. Writes are strictly validated, and everything else is denied.
 //
 // Collection: groups/{groupId}
-// Group ID: lowercase letters, numbers and hyphens; "default" is the built-in group.
-// Fields (all required): id (same as the document ID), name, createdAt and updatedAt.
-// Groups can be read publicly. Only valid group documents can be created; they cannot be updated
-// or deleted yet. There is no sign-in or group access control.
+// Group ID: lowercase letters, numbers and hyphens (the app makes 20 random characters).
+// Fields (all required, no others, never change after create):
+//   - id: string - the same as the document ID
+//   - name: string (1-100 chars) - the patient's name, e.g. "Sam Smith"
+//   - ownerId: string - the uid of the lead caregiver, who started the group
+//   - createdAt, updatedAt: timestamp - server time of the create
+// Only members can read a group. It's created together with its owner's member document.
+//
+// Subcollection: groups/{groupId}/members/{uid}
+// Document ID: the member's uid
+// Fields (never change after create):
+//   - uid: string (required) - the same as the document ID
+//   - name: string (required, 1-100 chars) - the member's name
+//   - email: string (required) - the member's sign-in email address, lowercase
+//   - joinedAt: timestamp (required) - server time of joining
+//   - invite: string (optional) - the ID of the invite they accepted; absent for the owner
+// Members of a group can read each other's member documents, and everyone can find their own
+// (a collection group query on uid). A member is added only by starting a group or by accepting
+// an invite. The owner can remove anyone else, and anyone but the owner can leave.
+//
+// Subcollection: groups/{groupId}/invites/{inviteId}
+// Document ID: auto-generated; it's the secret part of the invite link
+// Fields (all required, no others, never change):
+//   - email: string - the lowercase email address the invite is for
+//   - groupName: string - the group's name, so the invitee can see it before joining
+//   - invitedBy: string - the owner's uid
+//   - invitedByName: string (1-100 chars) - the owner's name
+//   - createdAt: timestamp - server time of the create
+// Only the owner creates, lists and cancels invites. The person it's for (signed in with that
+// email address) can read it, and uses it up when joining, which needs a confirmed email address.
 //
 // Collection: treatments/{treatmentId}/stories
-// Treatment ID: only "demo" for now (one hardcoded treatment until sign-in exists).
+// Treatment ID: only "demo"; stories are split by group instead (the `group` field).
 // The treatments/{treatmentId} document itself is never read or written.
 // Document ID: auto-generated
-// Fields for new stories (all required, no others; after create only setNumber can change):
+// Fields (all required, no others; after create only setNumber can change):
 //   - title: string (1-100 chars) - e.g. "Heather and Dave's wedding"
 //   - storyteller: string (1-100 chars) - the family member telling the story
 //   - relationship: string, one of Mother, Father, Sister, Brother, Aunt, Uncle, Cousin, Friend
 //   - affect: string, "happy" or "challenging"
 //   - setNumber: int (1 or 2) - which of the two sets with this affect; the only field that can
 //     change after create (moving a story to the other set with the same affect)
-//   - group: string - the ID of an existing groups/{groupId} document
+//   - group: string - the ID of the group the story belongs to; the writer must be a member
 //   - nameDuration: int (1-60,000) - ms of the clip saying the patient's name 3 times
 //   - storyDuration: int (1-300,000) - ms of the story clip; with the name clip, at most 5:00
 //     (nameDuration + storyDuration <= 300,000). A set holds any number of stories.
@@ -35,8 +61,8 @@ rules_version = '2';
 //   - size: int (2-5,000,000) - total audio bytes of both clips
 //   - chunkCount: int (1-5) - number of chunk documents, ceil(size / 1,000,000)
 //   - createdAt: timestamp - server time of the save
-// Stories created before the group field was added may omit it; they remain readable and movable.
-// The app treats them as "default" when replacing their audio. New stories must name an existing group.
+// Stories saved before groups existed have no `group`, so nobody can read them until they're
+// given one.
 //
 // Subcollection: treatments/{treatmentId}/stories/{storyId}/chunks
 // Document ID: "0" to "4" (chunk index)
@@ -44,8 +70,8 @@ rules_version = '2';
 //   - data: bytes (1-1,000,000) - one piece of the audio
 //
 // The app saves a story and all its chunks in one batch, and deletes them in one batch.
-// It lists stories with orderBy('createdAt'), reads chunks by ID, and moves a story by updating
-// only its setNumber.
+// It lists a group's stories with where('group', '==', groupId), reads chunks by ID, and moves a
+// story by updating only its setNumber.
 //
 // ===============================================================
 
@@ -56,12 +82,32 @@ service cloud.firestore {
     // Helper Functions
     // ===============================================================
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // The signed-in person's email address, lowercase, or '' for an account without one.
+    function myEmail() {
+      return isSignedIn() && 'email' in request.auth.token && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.get('email_verified', false) == true;
+    }
+
     function isStringOfLength(value, minLen, maxLen) {
       return value is string && value.size() >= minLen && value.size() <= maxLen;
     }
 
     function isIntInRange(value, min, max) {
       return value is int && value >= min && value <= max;
+    }
+
+    function isValidEmail(value) {
+      return isStringOfLength(value, 3, 254) && value == value.lower()
+        && value.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
     }
 
     function isValidGroupId(groupId) {
@@ -73,17 +119,24 @@ service cloud.firestore {
       return /databases/$(database)/documents/groups/$(groupId);
     }
 
-    function isValidGroup(groupId, data) {
-      let fields = ['id', 'name', 'createdAt', 'updatedAt'];
-      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
-        && isValidGroupId(groupId)
-        && data.id == groupId
-        && isStringOfLength(data.name, 1, 100)
-        && data.createdAt == request.time
-        && data.updatedAt == request.time;
+    function memberPath(groupId, uid) {
+      return /databases/$(database)/documents/groups/$(groupId)/members/$(uid);
     }
 
-    // The only treatment until sign-in and per-treatment membership exist.
+    function invitePath(groupId, inviteId) {
+      return /databases/$(database)/documents/groups/$(groupId)/invites/$(inviteId);
+    }
+
+    function isMember(groupId) {
+      return isSignedIn() && exists(memberPath(groupId, request.auth.uid));
+    }
+
+    // The lead caregiver: the person who started the group.
+    function isOwner(groupId) {
+      return isSignedIn() && get(groupPath(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    // The only treatment: stories are split into groups by their `group` field instead.
     function isDemoTreatment(treatmentId) {
       return treatmentId == 'demo';
     }
@@ -110,6 +163,56 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
 
+    function isValidGroup(groupId, data) {
+      let fields = ['id', 'name', 'ownerId', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && isValidGroupId(groupId)
+        && data.id == groupId
+        && isStringOfLength(data.name, 1, 100)
+        && data.ownerId == request.auth.uid
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    // A member document for the signed-in person, with their own email address.
+    function isValidMember(memberId, data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'joinedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'joinedAt', 'invite'])
+        && memberId == request.auth.uid
+        && data.uid == memberId
+        && isStringOfLength(data.name, 1, 100)
+        && myEmail() != '' && data.email == myEmail()
+        && data.joinedAt == request.time;
+    }
+
+    // Starting a group: the owner's own member document, written in the same batch as the new group.
+    function isStartingGroup(groupId, data) {
+      return !('invite' in data)
+        && !exists(groupPath(groupId))
+        && getAfter(groupPath(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    // Accepting an invite: it's for this person's confirmed email address, and it's used up
+    // (deleted) in the same batch, so it can't be used twice.
+    function isAcceptingInvite(groupId, data) {
+      return 'invite' in data
+        && data.invite is string
+        && isEmailVerified()
+        && exists(invitePath(groupId, data.invite))
+        && get(invitePath(groupId, data.invite)).data.email == myEmail()
+        && !existsAfter(invitePath(groupId, data.invite));
+    }
+
+    function isValidInvite(groupId, data) {
+      let fields = ['email', 'groupName', 'invitedBy', 'invitedByName', 'createdAt'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && isValidEmail(data.email)
+        && data.groupName == get(groupPath(groupId)).data.name
+        && data.invitedBy == request.auth.uid
+        && isStringOfLength(data.invitedByName, 1, 100)
+        && data.createdAt == request.time;
+    }
+
     function isValidStory(treatmentId, storyId, data) {
       let fields = ['title', 'storyteller', 'relationship', 'affect', 'setNumber', 'group',
                     'nameDuration', 'storyDuration', 'type', 'nameSize', 'size', 'chunkCount', 'createdAt'];
@@ -120,8 +223,6 @@ service cloud.firestore {
         && data.affect in ['happy', 'challenging']
         && isIntInRange(data.setNumber, 1, 2)
         && isValidGroupId(data.group)
-        && exists(groupPath(data.group))
-        && get(groupPath(data.group)).data.id == data.group
         && isIntInRange(data.nameDuration, 1, 60000)
         && isIntInRange(data.storyDuration, 1, 300000)
         && data.nameDuration + data.storyDuration <= 300000 // a story is at most 5:00, counting the name
@@ -138,8 +239,8 @@ service cloud.firestore {
         && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 4);
     }
 
-    // Moving a story: only setNumber changes, to 1 or 2. The affect can't change, so a story only
-    // moves between the two sets with the same affect, and every other field stays as validated on create.
+    // Moving a story: only setNumber changes, to 1 or 2. The affect and group can't change, so a story
+    // only moves between the two sets with the same affect, and every other field stays as validated on create.
     function isValidStoryMove() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['setNumber'])
         && isIntInRange(request.resource.data.setNumber, 1, 2);
@@ -160,18 +261,49 @@ service cloud.firestore {
     // ===============================================================
 
     match /groups/{groupId} {
-      allow read: if true;
-      allow create: if isValidGroup(groupId, request.resource.data);
+      allow read: if isMember(groupId);
+      // Started together with the owner's member document.
+      allow create: if isSignedIn()
+        && isValidGroup(groupId, request.resource.data)
+        && existsAfter(memberPath(groupId, request.auth.uid));
       allow update, delete: if false;
+
+      match /members/{memberId} {
+        allow read: if isMember(groupId);
+        allow create: if isSignedIn()
+          && isValidMember(memberId, request.resource.data)
+          && (isStartingGroup(groupId, request.resource.data) || isAcceptingInvite(groupId, request.resource.data));
+        allow update: if false;
+        // The owner removes someone else, or a member leaves. The owner can't leave or be removed.
+        allow delete: if isSignedIn()
+          && memberId != get(groupPath(groupId)).data.ownerId
+          && (isOwner(groupId) || memberId == request.auth.uid);
+      }
+
+      match /invites/{inviteId} {
+        allow read: if isOwner(groupId) || (myEmail() != '' && resource.data.email == myEmail());
+        allow create: if isOwner(groupId) && isValidInvite(groupId, request.resource.data);
+        allow update: if false;
+        // The owner cancels it, or the person it's for uses it up when joining.
+        allow delete: if isOwner(groupId)
+          || (isEmailVerified() && myEmail() != '' && resource.data.email == myEmail());
+      }
+    }
+
+    // Everyone can find their own memberships: query(collectionGroup('members'), where('uid', '==', uid)).
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /treatments/{treatmentId}/stories/{storyId} {
-      // Public by request: the prototype has no sign-in yet, and only the demo treatment exists.
-      allow read: if isDemoTreatment(treatmentId);
-      allow create: if isDemoTreatment(treatmentId) && isValidStory(treatmentId, storyId, request.resource.data);
-      allow update: if isDemoTreatment(treatmentId) && isValidStoryMove();
+      allow read: if isDemoTreatment(treatmentId) && isMember(resource.data.group);
+      allow create: if isDemoTreatment(treatmentId)
+        && isValidStory(treatmentId, storyId, request.resource.data)
+        && isMember(request.resource.data.group);
+      allow update: if isDemoTreatment(treatmentId) && isMember(resource.data.group) && isValidStoryMove();
       // Delete only together with all of its chunks.
       allow delete: if isDemoTreatment(treatmentId)
+        && isMember(resource.data.group)
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 0)
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 1)
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 2)
@@ -179,12 +311,15 @@ service cloud.firestore {
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 4);
 
       match /chunks/{chunkId} {
-        allow read: if isDemoTreatment(treatmentId);
+        allow read: if isDemoTreatment(treatmentId) && isMember(get(storyPath(treatmentId, storyId)).data.group);
         allow create: if isDemoTreatment(treatmentId)
-          && isValidStoryChunk(treatmentId, storyId, chunkId, request.resource.data);
+          && isValidStoryChunk(treatmentId, storyId, chunkId, request.resource.data)
+          && isMember(getAfter(storyPath(treatmentId, storyId)).data.group);
         allow update: if false;
         // Delete only together with the story it belongs to.
-        allow delete: if isDemoTreatment(treatmentId) && !existsAfter(storyPath(treatmentId, storyId));
+        allow delete: if isDemoTreatment(treatmentId)
+          && isMember(get(storyPath(treatmentId, storyId)).data.group)
+          && !existsAfter(storyPath(treatmentId, storyId));
       }
     }
 
