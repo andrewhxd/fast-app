@@ -18,6 +18,12 @@ New stories save the selected group ID with their metadata, and editing preserve
 - Listen to whole sets or single stories, and move or swap stories between sets of the same kind.
 - Works on phones and on computers (with a sidebar layout at 960 px and wider), in light and dark mode.
 
+### Group filtering preview
+
+The local Family A screen shows only its seeded story.
+
+![Family A Listen screen showing only the Family A sample story](docs/group-filtering-preview.jpg)
+
 Sign-in, admin accounts, clinician approval and playing sessions to the patient are not built yet.
 Until sign-in exists, anyone with the link can see and delete stories, so don't record real patient names or real family stories.
 
