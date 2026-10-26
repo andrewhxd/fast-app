@@ -44,6 +44,8 @@ If the URL points to an unknown group, the app hides the story screens and shows
 The Home selector changes the group and URL together.
 - At this stage, `listStories()` still loads the existing treatment-wide story list for every valid group.
 Story filtering by group is a later implementation step.
+- `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
+`replaceStoryAudio()` keeps the original group; stories without a group are treated as `default` when edited.
 - `App` loads every story's details once with `listStories()` and passes them down; `summarizeSets()` turns them into each set's count and total.
 - After any change (save, move, swap, delete, edit), the screen calls back into `App`, which reloads the list before showing the result.
 Totals are never computed from stale data on the same device.
@@ -60,6 +62,9 @@ The rules behind it:
 - `listGroups()` reads the top-level `groups` collection.
 Group documents have `id`, `name`, `createdAt` and `updatedAt`; the local seed creates `groups/default` and `groups/family-a`.
 Groups are publicly readable and valid documents may be created, with no sign-in or access control.
+- New stories require a valid `group` ID that matches an existing `groups/{groupId}` document.
+The public demo still has no sign-in or membership checks.
+Legacy stories may omit `group`; they remain readable and movable, and audio replacement assigns them to `default`.
 - **A story's audio is chunked.** Firestore documents max out at 1 MiB, so a story's audio is split into 1 MB chunk documents (at most 5, so 5 MB per story).
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
 - **Writes are atomic batches.** A story and all its chunks are written in one batch, and deleted in one batch.

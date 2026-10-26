@@ -10,6 +10,7 @@ Family members record personal stories for a loved one with a disorder of consci
 ## What works
 
 - Browse Firestore groups and select the current group on Home; the group ID stays in the URL.
+New stories save the selected group ID with their metadata, and editing preserves it.
 Story lists are still shared across groups until group-specific story filtering is implemented.
 - Record a story in 3 steps: the patient's name said 3 times, the story (up to 5:00, counting the name), then its details.
 - Track each set toward its 9:00 to 11:00 target.

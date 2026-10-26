@@ -205,7 +205,7 @@ The README explains how to run a fork on its own Firebase project.
 ```
 groups/{groupId}                         id, name, createdAt, updatedAt
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
-                                         nameDuration, storyDuration, type, nameSize, size,
+                                         group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt
 treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
@@ -214,6 +214,9 @@ Group IDs use lowercase letters, numbers and hyphens.
 The local seed creates the `default` and `family-a` groups.
 The app reads group names and changes groups from the Home screen, writing the selection to `?group=<groupId>`.
 Stories still use the existing treatment-wide list until group filtering is implemented.
+New stories store their selected group ID in `group`, and editing preserves that group.
+Older stories without `group` remain readable and are treated as belonging to `default` when edited.
+The public demo still has no sign-in or membership checks.
 
 Cloud Storage needs the paid Blaze plan, so the audio is stored in Firestore, split into 1 MB chunk documents.
 The name clip and the story clip are stored back to back, and `nameSize` says where to split them.

@@ -9,8 +9,8 @@ import { DEFAULT_GROUP_ID, isValidGroupId } from './group.js';
 // which has no Cloud Storage bucket, so the audio itself goes into Firestore too:
 //
 //   treatments/demo/stories/{id}            title, storyteller, relationship, affect, setNumber,
-//                                           nameDuration, storyDuration, type, nameSize, size,
-//                                           chunkCount, createdAt
+//                                           group, nameDuration, storyDuration, type, nameSize,
+//                                           size, chunkCount, createdAt
 //   treatments/demo/stories/{id}/chunks/{i} data: up to 1 MB of the audio (documents max out at 1 MiB)
 //
 // The audio is the name clip's bytes followed by the story clip's bytes; nameSize says where to split them.
@@ -93,9 +93,10 @@ function queueDelete(batch, story) {
 
 // Upload a story in one batch, so it saves completely or not at all. Returns the new id.
 // `name` and `story` are the two recorded clips: { blob, duration }.
-export async function addStory({ name, story, ...details }) {
+export async function addStory({ groupId, name, story, ...details }) {
+  if (!isValidGroupId(groupId)) throw new Error('Choose a valid group before saving this story.');
   const batch = writeBatch(db);
-  const { storyRef, audio } = await queueStory(batch, details, name, story);
+  const { storyRef, audio } = await queueStory(batch, { ...details, group: groupId }, name, story);
   await batch.commit();
   audioCache.add(storyRef.id, audio); // no download to play it back
   return storyRef.id;
@@ -111,6 +112,7 @@ export async function replaceStoryAudio(old, { name, story }) {
     relationship: old.relationship,
     affect: old.affect,
     setNumber: old.setNumber,
+    group: old.group ?? DEFAULT_GROUP_ID,
   };
   const batch = writeBatch(db);
   const { storyRef, audio } = await queueStory(batch, details, name, story);

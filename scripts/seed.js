@@ -174,6 +174,7 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
     relationship,
     affect,
     setNumber,
+    group: 'default',
     nameDuration,
     storyDuration,
     type: 'audio/wav',
