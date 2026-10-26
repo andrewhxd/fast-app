@@ -41,6 +41,25 @@ Group IDs use lowercase letters, numbers and hyphens, for example `family-a`.
 `npm run dev` runs the app against the shared live database instead, the one https://fast-app-cs499.web.app uses.
 To try it on a phone, run `npm run dev:mobile` and open the `Network: https://...` address it prints (phones only allow the microphone over HTTPS); this also uses the live database.
 
+### Preview with the test Firebase project
+
+`npm run dev:preview` runs the app against the `fast-app-2026` test project's Firestore.
+This uses `.env.preview`, so it is separate from both the production project and the local emulator.
+The Firebase web config is client-side configuration, not a secret, and the test project must use safe test data and suitable Firestore rules.
+To fill the test project with the same deterministic groups and stories as the emulator, run `npm run seed:preview`.
+That command refuses to write unless `.env.preview` points to `fast-app-2026` and does not configure an emulator.
+
+To build and publish a temporary Hosting preview, run:
+
+```bash
+npm run deploy:preview
+```
+
+This deploys only Hosting to the `group-audio-management` preview channel in `fast-app-2026` and prints its URL.
+The channel expires after 30 days.
+It does not deploy Firestore rules; deploy rules to the test project separately when needed.
+Preview URLs are public, so do not use real patient or family stories there.
+
 ## Use your own Firebase project
 
 To run a fork on your own Firebase project:

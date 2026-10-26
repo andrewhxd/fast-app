@@ -1,5 +1,6 @@
 // Fills the local Firestore emulator with sample stories, so every screen has something to show.
 // `npm run dev:local` runs this after starting the emulator; it never touches a real Firebase project.
+// `npm run seed:preview` uses the same data in the isolated fast-app-2026 test project.
 //
 // The stories match the ones in the design canvas: Happy set 1 partway there, Happy set 2 in range,
 // Challenging set 1 partway there, and Challenging set 2 empty. Two stories run close to 5:00 and
@@ -197,17 +198,28 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
   await batch.commit();
 }
 
-const env = loadEnv('emulator', fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
+const target = process.argv[2] === '--preview' ? 'preview' : 'emulator';
+if (process.argv.length > 2 && process.argv[2] !== '--preview') {
+  throw new Error('Usage: node scripts/seed.js [--preview]');
+}
+
+const env = loadEnv(target, fileURLToPath(new URL('..', import.meta.url)), 'VITE_');
 const projectId = env.VITE_FIREBASE_PROJECT_ID;
 const emulator = env.VITE_FIRESTORE_EMULATOR;
-// Only ever write to the emulator, and only to a "demo-" project, which can't exist outside it.
-if (!emulator || !projectId?.startsWith('demo-')) {
+// Local seeding can only target an emulator and a "demo-" project.
+if (target === 'emulator' && (!emulator || !projectId?.startsWith('demo-'))) {
   throw new Error('.env.emulator must set VITE_FIRESTORE_EMULATOR and a "demo-" VITE_FIREBASE_PROJECT_ID');
+}
+// Cloud writes are limited to the explicitly configured test project.
+if (target === 'preview' && (emulator || projectId !== 'fast-app-2026')) {
+  throw new Error('Preview seeding is allowed only for fast-app-2026, with no Firestore emulator configured.');
 }
 
 const db = getFirestore(initializeApp({ apiKey: env.VITE_FIREBASE_API_KEY, projectId }));
-const [host, port] = emulator.split(':');
-connectFirestoreEmulator(db, host, Number(port));
+if (target === 'emulator') {
+  const [host, port] = emulator.split(':');
+  connectFirestoreEmulator(db, host, Number(port));
+}
 
 for (const group of [
   { id: 'default', name: 'Default group' },
@@ -226,9 +238,9 @@ for (const group of [
 
 const existing = await getDocs(query(collection(db, 'treatments', TREATMENT_ID, 'stories'), limit(1)));
 if (!existing.empty) {
-  console.log('The local database already has stories, so no sample stories were added.');
+  console.log(`The ${target} database already has stories, so no sample stories were added.`);
 } else {
   for (const story of STORIES) await saveStory(db, story, 'default');
   for (const { groupId, story } of GROUP_STORIES) await saveStory(db, story, groupId);
-  console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories to the local database.`);
+  console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories to the ${target} database.`);
 }

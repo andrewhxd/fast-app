@@ -4,7 +4,7 @@ rules_version = '2';
 // Assumed Data Model
 // ===============================================================
 //
-// The FAST app prototype, in its own Firebase project (fast-app-cs499).
+// The FAST app prototype, with production in fast-app-cs499 and isolated preview data in fast-app-2026.
 // There is no sign-in yet (requested by the owner), so every request is unauthenticated.
 // Anyone can list, play, save, move, and delete stories. Because of that, these rules strictly
 // validate what can be written and deny everything else.

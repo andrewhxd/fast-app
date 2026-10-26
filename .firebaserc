@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "fast-app-cs499"
+    "default": "fast-app-cs499",
+    "preview": "fast-app-2026"
   }
 }

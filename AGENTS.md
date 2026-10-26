@@ -63,9 +63,12 @@ Commits are authored by the repository owner only.
 
 ### Data and Firebase safety
 
-- The app uses Firebase project `fast-app-cs499` only.
+- Production uses Firebase project `fast-app-cs499`; the isolated preview environment uses `fast-app-2026`.
 Never deploy rules, hosting or anything else to `fast-audio-playback-demo`, which is a separate audio recorder demo that this app grew out of.
-- Before any deploy, confirm the active project really is `fast-app-cs499` (`npx firebase-tools use`, or `firebase_get_environment` with the Firebase MCP server).
+- Production deploys must target `fast-app-cs499` explicitly.
+Preview deploys must use `npm run deploy:preview`, which targets the `group-audio-management` channel in `fast-app-2026` explicitly.
+Do not use a bare `firebase deploy` command.
+- `npm run seed:preview` writes sample data only to `fast-app-2026`; it is guarded by the project ID in `.env.preview`.
 With the Firebase MCP server, change the project directory and the active project in two separate calls, then check `firebase_get_environment` again: setting both in one call once deployed this app's rules to the wrong project.
 - Test with `npm run dev:local`, which uses a local Firestore emulator with sample stories and can't reach live data.
 `npm run dev` and `npm run dev:mobile` use the live database, so deleting a story there deletes it for everyone.
@@ -94,9 +97,13 @@ Requires Node.js 20.19+ or 22.12+.
 ```bash
 npm install
 npm run dev:local    # http://localhost:5173, against a local Firestore emulator with sample stories
-npm run dev          # http://localhost:5173, against the live database
+npm run dev          # http://localhost:5173, against the production database
+npm run dev:preview  # http://localhost:5173, against the test project fast-app-2026
+npm run seed:preview # write the emulator's sample groups and stories to fast-app-2026
 npm run dev:mobile   # HTTPS on the local network, for testing on a phone (live database)
 npm run build        # production build into dist/
+npm run build:preview # preview build into dist/
+npm run deploy:preview # deploy preview Hosting channel in fast-app-2026
 ```
 
 `npm run dev:local` starts the Firestore emulator (project `demo-fast-app`, with the real `firestore.rules`), runs `scripts/seed.js`, then starts Vite in `emulator` mode.
@@ -193,10 +200,14 @@ Its config is in `.env`; it identifies the project and is not a secret.
 ### Configuration
 
 `src/firebase.js` reads the Firebase config from Vite environment variables (`VITE_FIREBASE_*`).
-- `.env` (committed): the shared `fast-app-cs499` project, used by `npm run dev`, `npm run dev:mobile` and `npm run build`.
+- `.env` (committed): the shared production `fast-app-cs499` project, used by `npm run dev`, `npm run dev:mobile` and `npm run build`.
+- `.env.preview` (committed): the test `fast-app-2026` project, used by `npm run dev:preview` and `npm run build:preview`.
 - `.env.local` (not committed): a fork's own project, overriding `.env`.
 - `.env.emulator` (committed): `npm run dev:local`, with project `demo-fast-app` and `VITE_FIRESTORE_EMULATOR` set, which connects to the emulator and adds "(local)" to the page title.
 It takes priority over `.env.local`, so local runs never reach a real project.
+
+`.firebaserc` names `fast-app-cs499` as the default project and `fast-app-2026` as the `preview` alias.
+Preview Hosting deploys still specify the test project explicitly in the npm script.
 
 The emulator's ports are in `firebase.json`.
 The README explains how to run a fork on its own Firebase project.
