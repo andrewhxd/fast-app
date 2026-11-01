@@ -84,7 +84,7 @@ Photos of the events help but aren't required.
 Once the clinician approves them, the sets are locked and ready to play.
 
 User stories (slide 11), all built unless marked:
-- Read instructions on how to record. **Partly built** (short hints on each screen; no instructions screen).
+- Read instructions on how to record.
 - Record the patient's name 3 times before each story.
 - Record stories into 2 happy sets and 2 challenging sets of 9:00 to 11:00 each.
 - See each set's progress toward 9:00 to 11:00.
