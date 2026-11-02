@@ -45,6 +45,8 @@ If the URL points to a group the person isn't in, the app shows Your care teams 
 - `listStories(groupId)` queries only the current group's stories, the only query the rules allow.
 - `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
 `replaceStoryAudio()` keeps the original group.
+- `CareApp` splits the stories into the ones in the sets and the deleted ones (`deletedAt`), memoized so screens get the same arrays on every render; only the first count toward totals.
+Loading the stories also removes, in the background, deleted ones past their 30 days (`removeExpiredStories()`).
 - `App` loads the selected group's story details and passes them down; `summarizeSets()` turns them into each set's count and total.
 Changing groups clears the visible list while loading and ignores stale requests, so one group's stories cannot appear under another group's URL.
 - `StoryLibrary` preloads audio only for its current story array; set and individual players use those same filtered stories.
@@ -76,10 +78,11 @@ The rules behind it:
 Stories without a `group` (saved before groups existed) can't be read by anyone until they're given one.
 - **A story's audio is chunked.** Firestore documents max out at 1 MiB, so a story's audio is split into 1 MB chunk documents (at most 5, so 5 MB per story).
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
-- **Writes are atomic batches.** A story and all its chunks are written in one batch, and deleted in one batch.
+- **Writes are atomic batches.** A story and all its chunks are written in one batch, and removed for good in one batch.
 The rules enforce this with `existsAfter()` and `getAfter()`, so a half-saved or half-deleted story can't exist.
-- **Saved stories never change, except `setNumber`.** Moving or swapping updates only `setNumber`, and the rules reject any other update.
-Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and deletes the old one in a single batch.
+- **Saved stories change only by moving, deleting and restoring.** Moving or swapping updates only `setNumber`; deleting adds `deletedAt` and `deletedBy`; restoring removes them (and may change `setNumber`). The rules reject any other update, and a deleted story can't move.
+- **Deleting is a soft delete.** A deleted story keeps its audio and can be restored for 30 days (`RECOVERY_DAYS`); the rules refuse to remove it for good any sooner.
+Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and deletes the old one (with `replacedBy` naming the new one) in a single batch, so the earlier version can be restored too.
 The edited story gets a new id and a new `createdAt`, so it moves to the end of its set's list.
 - **Durations are measured, not read from the file.** Some browsers (Chrome's WebM) write recordings without a readable length, so `useRecorder` times the recording itself and the durations are stored in milliseconds as integers.
 Never take a length from an `<audio>` element.

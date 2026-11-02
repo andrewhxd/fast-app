@@ -3,19 +3,24 @@ import ClipPlayer from './ClipPlayer.jsx';
 import NavBar from './NavBar.jsx';
 import { GROUPS } from './StorySets.jsx';
 import { CheckIcon, MoreIcon, PlusIcon } from './icons.jsx';
-import { deleteStory, loadStoryAudio, moveStory, splitClips, swapStories } from './storage.js';
+import { deleteStory, loadStoryAudio, moveStory, restoreStory, splitClips, swapStories } from './storage.js';
 import {
-  SET_MAX, fitsInSet, formatTime, setKey, setName, setStatus, setStatusText, storiesInSet, storyLength, tintClass,
+  RECOVERY_DAYS, SET_MAX, fitsInSet, formatTime, recoveryDaysLeft, setKey, setName, setStatus, setStatusText,
+  storiesInSet, storyLength, tintClass,
 } from './stories.js';
 
 // "Listen": every set and its stories, grouped like the Record a Story screen.
 // Play a whole set or one story; each story's ⋯ opens Edit, Move and Delete.
+// Deleted stories (`deletedStories`) are listed under "Recently deleted", where they can be played
+// and restored for RECOVERY_DAYS days.
 // Rearrange (or Move) moves stories between the two sets of the same affect: tap a story, then a
 // story in the other set to swap them, or "Move Here". Only moves that keep both sets at or under
 // 11:00 are offered.
 // `onChanged(message)` reloads the stories after a change; `notice` says what the last change did,
 // until `onClearNotice()` is called. `onEdit(story)` opens the editor.
-export default function StoryLibrary({ groupId, stories, summary, notice, backButton, onChanged, onClearNotice, onRecord, onEdit }) {
+export default function StoryLibrary({
+  groupId, stories, deletedStories, summary, notice, backButton, onChanged, onClearNotice, onRecord, onEdit,
+}) {
   const [arranging, setArranging] = useState(false);
   const [selectedId, setSelectedId] = useState(''); // the story picked to move, while arranging
   const [openId, setOpenId] = useState(''); // the story whose ⋯ actions are showing
@@ -33,7 +38,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
     setLoadError('');
     storyClips.current.clear();
     setClips.current.clear();
-    for (const story of stories) {
+    for (const story of [...stories, ...deletedStories]) {
       loadStoryAudio(story)
         .then((blob) => {
           if (!cancelled) setAudio((prev) => (prev[story.id] === blob ? prev : { ...prev, [story.id]: blob }));
@@ -45,7 +50,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
     return () => {
       cancelled = true;
     };
-  }, [groupId, stories]);
+  }, [groupId, stories, deletedStories]);
 
   // Players need the same clips array on every render, or playback restarts, so the clips are
   // kept until the story or its audio changes.
@@ -87,7 +92,25 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
     return totalOf(a) + delta <= SET_MAX && totalOf(b) - delta <= SET_MAX;
   }
 
-  // Save a move, swap or delete, then reload the stories and say what happened.
+  // Where a deleted story can go back: its own set if there's room, or else the other set of its
+  // affect. Null when neither has room.
+  function restoreSet(story) {
+    const length = storyLength(story);
+    const other = story.setNumber === 1 ? 2 : 1;
+    return [story.setNumber, other].find((n) => fitsInSet(summary[setKey(story.affect, n)].total, length)) ?? null;
+  }
+
+  function restore(story) {
+    const setNumber = restoreSet(story);
+    const where = setName(story.affect, setNumber);
+    let message = setNumber === story.setNumber
+      ? `Restored "${story.title}" to ${where}.`
+      : `Restored "${story.title}" to ${where}, since ${setName(story.affect, story.setNumber)} is full.`;
+    if (story.replacedBy && stories.some((s) => s.id === story.replacedBy)) message += ' The edited version is still there too.';
+    change(() => restoreStory(story, setNumber, groupId), message);
+  }
+
+  // Save a move, swap, delete or restore, then reload the stories and say what happened.
   async function change(action, message) {
     setBusy(true);
     setError('');
@@ -191,14 +214,48 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
         )}
         {deletingId === story.id && (
           <div className="confirm slot-confirm">
-            <p>Delete &quot;{story.title}&quot;? This can&apos;t be undone.</p>
+            <p>Delete &quot;{story.title}&quot;? You can restore it from Recently deleted for {RECOVERY_DAYS} days.</p>
             <div className="buttons">
-              <button className="pill pill-record" onClick={() => change(() => deleteStory(story, groupId), `Deleted "${story.title}".`)} disabled={busy}>
+              <button
+                className="pill pill-record"
+                onClick={() => change(() => deleteStory(story, groupId), `Deleted "${story.title}". You can restore it from Recently deleted for ${RECOVERY_DAYS} days.`)}
+                disabled={busy}
+              >
                 Delete
               </button>
               <button className="pill pill-white" onClick={() => setDeletingId('')} disabled={busy}>Keep it</button>
             </div>
           </div>
+        )}
+      </div>
+    );
+  }
+
+  // A deleted story: play it, and restore it while there's room in its affect's sets.
+  function deletedRow(story) {
+    const days = recoveryDaysLeft(story);
+    const left = days > 1 ? `${days} days left` : days === 1 ? '1 day left' : 'Removing soon';
+    const target = restoreSet(story);
+    return (
+      <div key={story.id} className="story-item">
+        <div className="story-row">
+          <ClipPlayer
+            compact
+            clips={clipsFor(story)}
+            title={story.replacedBy ? `${story.title} (before an edit)` : story.title}
+            details={left}
+            total={storyLength(story)}
+            trailing={(
+              <button className="restore-button" onClick={() => restore(story)} disabled={busy || target === null}>
+                Restore
+              </button>
+            )}
+          />
+        </div>
+        {target === null && (
+          <p className="hint restore-hint">
+            Both {story.affect} sets are too full for it ({formatTime(storyLength(story))}). Make room first.
+          </p>
         )}
       </div>
     );
@@ -303,6 +360,14 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
             </section>
           ))}
         </div>
+
+        {!arranging && deletedStories.length > 0 && (
+          <section className="group-section" aria-label="Recently deleted">
+            <h2 className="group-label">Recently deleted</h2>
+            <p className="hint">Deleted stories stay here for {RECOVERY_DAYS} days, then they&apos;re removed for good.</p>
+            <div className="story-list">{deletedStories.map(deletedRow)}</div>
+          </section>
+        )}
       </main>
     </>
   );

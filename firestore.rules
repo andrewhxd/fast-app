@@ -45,7 +45,7 @@ rules_version = '2';
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
 // The treatments/{treatmentId} document itself is never read or written.
 // Document ID: auto-generated
-// Fields (all required, no others; after create only setNumber can change):
+// Fields (all required at create, no others):
 //   - title: string (1-100 chars) - e.g. "Heather and Dave's wedding"
 //   - storyteller: string (1-100 chars) - the family member telling the story
 //   - relationship: string, one of Mother, Father, Sister, Brother, Aunt, Uncle, Cousin, Friend
@@ -61,6 +61,14 @@ rules_version = '2';
 //   - size: int (2-5,000,000) - total audio bytes of both clips
 //   - chunkCount: int (1-5) - number of chunk documents, ceil(size / 1,000,000)
 //   - createdAt: timestamp - server time of the save
+// Fields added when a story is deleted (a soft delete: it can be restored for 30 days):
+//   - deletedAt: timestamp - server time of the delete
+//   - deletedBy: string - the uid of the member who deleted it
+//   - replacedBy: string (optional) - set when an edit replaced it: the ID of the edited story,
+//     created in the same batch
+// After create, a story changes only by moving (setNumber), being deleted (adding the fields above)
+// or being restored (removing them, and possibly changing setNumber). A deleted story can't move.
+// It's removed for good, with its chunks, only once it has been deleted for 30 days.
 // Stories saved before groups existed have no `group`, so nobody can read them until they're
 // given one.
 //
@@ -69,9 +77,9 @@ rules_version = '2';
 // Fields (required, no others, immutable):
 //   - data: bytes (1-1,000,000) - one piece of the audio
 //
-// The app saves a story and all its chunks in one batch, and deletes them in one batch.
-// It lists a group's stories with where('group', '==', groupId), reads chunks by ID, and moves a
-// story by updating only its setNumber.
+// The app saves a story and all its chunks in one batch, and removes them for good in one batch.
+// It lists a group's stories with where('group', '==', groupId), reads chunks by ID, moves a
+// story by updating only its setNumber, and deletes or restores one by updating it.
 //
 // ===============================================================
 
@@ -134,6 +142,12 @@ service cloud.firestore {
     // The lead caregiver: the person who started the group.
     function isOwner(groupId) {
       return isSignedIn() && get(groupPath(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    // How long a deleted story can be restored before it may be removed for good.
+    // Must match RECOVERY_DAYS in src/stories.js.
+    function recoveryPeriod() {
+      return duration.value(30, 'd');
     }
 
     // The only treatment: stories are split into groups by their `group` field instead.
@@ -241,9 +255,46 @@ service cloud.firestore {
 
     // Moving a story: only setNumber changes, to 1 or 2. The affect and group can't change, so a story
     // only moves between the two sets with the same affect, and every other field stays as validated on create.
+    // A deleted story can't move.
     function isValidStoryMove() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['setNumber'])
+      return !('deletedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['setNumber'])
         && isIntInRange(request.resource.data.setNumber, 1, 2);
+    }
+
+    // A story created in this same batch, in the same group: the edited version of a story.
+    function isNewStoryInBatch(treatmentId, storyId, groupId) {
+      return isStringOfLength(storyId, 1, 100) && storyId.matches('^[A-Za-z0-9]+$')
+        && !exists(storyPath(treatmentId, storyId))
+        && existsAfter(storyPath(treatmentId, storyId))
+        && getAfter(storyPath(treatmentId, storyId)).data.group == groupId;
+    }
+
+    // Deleting a story: it's only marked, by the signed-in member, now. If an edit replaced it,
+    // replacedBy names the edited story, saved in the same batch.
+    function isValidSoftDelete(treatmentId) {
+      let data = request.resource.data;
+      let changed = data.diff(resource.data).affectedKeys();
+      return !('deletedAt' in resource.data)
+        && changed.hasAll(['deletedAt', 'deletedBy'])
+        && changed.hasOnly(['deletedAt', 'deletedBy', 'replacedBy'])
+        && data.deletedAt == request.time
+        && data.deletedBy == request.auth.uid
+        && (!('replacedBy' in data) || isNewStoryInBatch(treatmentId, data.replacedBy, resource.data.group));
+    }
+
+    // Restoring a deleted story: the delete fields go, and it may go back to either set of its affect.
+    function isValidRestore() {
+      let data = request.resource.data;
+      return 'deletedAt' in resource.data
+        && !('deletedAt' in data) && !('deletedBy' in data) && !('replacedBy' in data)
+        && data.diff(resource.data).affectedKeys().hasOnly(['deletedAt', 'deletedBy', 'replacedBy', 'setNumber'])
+        && isIntInRange(data.setNumber, 1, 2);
+    }
+
+    // A story can be removed for good only after it has been deleted for the whole recovery period.
+    function isPastRecovery() {
+      return 'deletedAt' in resource.data && resource.data.deletedAt < request.time - recoveryPeriod();
     }
 
     function isValidStoryChunk(treatmentId, storyId, chunkId, data) {
@@ -300,10 +351,12 @@ service cloud.firestore {
       allow create: if isDemoTreatment(treatmentId)
         && isValidStory(treatmentId, storyId, request.resource.data)
         && isMember(request.resource.data.group);
-      allow update: if isDemoTreatment(treatmentId) && isMember(resource.data.group) && isValidStoryMove();
-      // Delete only together with all of its chunks.
+      allow update: if isDemoTreatment(treatmentId) && isMember(resource.data.group)
+        && (isValidStoryMove() || isValidSoftDelete(treatmentId) || isValidRestore());
+      // Removed for good only after the recovery period, and only together with all of its chunks.
       allow delete: if isDemoTreatment(treatmentId)
         && isMember(resource.data.group)
+        && isPastRecovery()
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 0)
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 1)
         && storyChunkDeletedIfPresent(treatmentId, storyId, resource.data.chunkCount, 2)
@@ -316,7 +369,7 @@ service cloud.firestore {
           && isValidStoryChunk(treatmentId, storyId, chunkId, request.resource.data)
           && isMember(getAfter(storyPath(treatmentId, storyId)).data.group);
         allow update: if false;
-        // Delete only together with the story it belongs to.
+        // Removed only together with the story it belongs to (which needs the recovery period to be over).
         allow delete: if isDemoTreatment(treatmentId)
           && isMember(get(storyPath(treatmentId, storyId)).data.group)
           && !existsAfter(storyPath(treatmentId, storyId));

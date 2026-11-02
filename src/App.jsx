@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CareTeam, { InviteSomeone } from './CareTeam.jsx';
 import YourCareTeams, { StartCareTeam } from './CareTeams.jsx';
 import EditStory from './EditStory.jsx';
@@ -14,8 +14,8 @@ import StorySets from './StorySets.jsx';
 import { displayName, signOut, useUser } from './auth.js';
 import { isValidGroupId, listMyGroups } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon, PeopleIcon } from './icons.jsx';
-import { listStories } from './storage.js';
-import { summarizeSets } from './stories.js';
+import { listStories, removeExpiredStories } from './storage.js';
+import { isPastRecovery, summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber },
 // { name: 'edit', storyId }, { name: 'team' } (Care team), { name: 'invite' }, { name: 'teams' }
@@ -133,6 +133,16 @@ function CareApp({ user }) {
   const [savingEdit, setSavingEdit] = useState(false); // an edited story is replacing the old one
 
   const currentGroup = groups?.find((item) => item.id === group.groupId);
+  // The current group's stories, split into the ones in its sets and the deleted ones that can
+  // still be restored (most recently deleted first); ones past their recovery period are being
+  // removed. Memoized, so screens get the same arrays on every render and don't reload audio.
+  const currentStories = currentGroup && storiesGroupId === group.groupId ? stories : null;
+  const [activeStories, deletedStories] = useMemo(() => {
+    if (!currentStories) return [null, null];
+    const deleted = currentStories.filter((s) => s.deletedAt && !isPastRecovery(s));
+    deleted.sort((a, b) => b.deletedAt.toMillis() - a.deletedAt.toMillis());
+    return [currentStories.filter((s) => !s.deletedAt), deleted];
+  }, [currentStories]);
 
   async function refreshStories(groupId = group.groupId) {
     if (groupId !== activeGroupId.current) return;
@@ -145,6 +155,7 @@ function CareApp({ user }) {
         setStories(list);
         setStoriesGroupId(groupId);
       }
+      removeExpiredStories(list); // in the background; they're gone from the list next time
     } catch (err) {
       if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setError(`Could not load stories: ${err.message}`);
@@ -331,8 +342,7 @@ function CareApp({ user }) {
 
   if (!group.groupId) return <Loading />;
 
-  const currentStories = currentGroup && storiesGroupId === group.groupId ? stories : null;
-  const summary = currentStories && summarizeSets(currentStories);
+  const summary = activeStories && summarizeSets(activeStories);
   const recordInSet = (affect, setNumber) => goTo({ name: 'guide', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
@@ -411,7 +421,8 @@ function CareApp({ user }) {
       <StoryLibrary
         groupId={group.groupId}
         key={group.groupId}
-        stories={currentStories}
+        stories={activeStories}
+        deletedStories={deletedStories}
         summary={summary}
         notice={notice}
         backButton={backButton}
@@ -422,7 +433,7 @@ function CareApp({ user }) {
       />
     );
   } else if (screen.name === 'edit') {
-    const story = currentStories?.find((s) => s.id === screen.storyId);
+    const story = activeStories?.find((s) => s.id === screen.storyId);
     content = story ? (
       <EditStory key={story.id} groupId={group.groupId} story={story} summary={summary} onSaved={editSaved} onCancel={goBack} />
     ) : (

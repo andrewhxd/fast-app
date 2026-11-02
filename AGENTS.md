@@ -179,9 +179,10 @@ An **Edit** button opens the story editor.
   - **Speed up or cut a part**: drag across part of the waveform, then play it at 1.1× or 1.2× (the voice keeps its natural pitch) or cut it.
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
-An edited saved story replaces the old one in one step, so it's never half saved.
+An edited saved story replaces the old one in one step, so it's never half saved, and the earlier version goes to Recently deleted.
 - **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and its stories.
 Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
+**Recently deleted**, at the end of Listen, keeps deleted stories (and the earlier versions of edited ones) for 30 days: each can be played and **Restore**d to its set, or to the other set of its affect if that one is full.
 **Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
@@ -246,7 +247,8 @@ groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
-                                         chunkCount, createdAt
+                                         chunkCount, createdAt, and once deleted: deletedAt,
+                                         deletedBy, replacedBy (the edited story, after an edit)
 treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
 
@@ -271,7 +273,9 @@ Every request must be signed in.
 Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
-Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edit is moving a story (`setNumber` between 1 and 2).
+Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
+Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
+The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).
 Everything else is denied.
 `npm run test:rules` checks all of this; add a test with every rules change.
 

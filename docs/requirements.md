@@ -113,6 +113,7 @@ The app deliberately has a simpler editor; see [design.md](design.md).
 - See the stories in each set, and where each set stands against 9:00 to 11:00.
 - Listen to a whole set or one story.
 - Edit or delete a story.
+Deleting is recoverable: deleted stories stay in Listen's Recently deleted for 30 days, where they can be restored (asked for in the client's feedback, issue #6).
 If an edit makes a set too long, go to its list of stories to pick one to edit; if too short, go back to recording.
 - Move stories between sets with the same affect.
 - The clinician can review stories and give comments. **Not built.**
