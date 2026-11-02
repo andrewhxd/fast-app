@@ -14,7 +14,7 @@ import { displayName, signOut, useUser } from './auth.js';
 import { isValidGroupId, listMyGroups } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon, PeopleIcon } from './icons.jsx';
 import { listStories } from './storage.js';
-import { summarizeSets } from './stories.js';
+import { SET_MIN, formatTime, setKey, setName, summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber },
 // { name: 'edit', storyId }, { name: 'team' } (Care team), { name: 'invite' }, { name: 'teams' }
@@ -143,11 +143,13 @@ function CareApp({ user }) {
       if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setStories(list);
         setStoriesGroupId(groupId);
+        return list;
       }
     } catch (err) {
       if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setError(`Could not load stories: ${err.message}`);
       }
+      return null;
     }
   }
 
@@ -293,13 +295,27 @@ function CareApp({ user }) {
     setNotice(message);
   }
 
-  // After an edited story is saved: reload the stories, go back to Listen, and say so.
-  async function editSaved(message) {
+  // After an edit, reload the list. If it left the set short, continue straight to recording there.
+  async function editSaved(message, editedStory) {
     setSavingEdit(true); // the old story disappears from the list before this screen closes
-    await refreshStories();
-    setNotice(message);
-    goBack();
-    setSavingEdit(false);
+    try {
+      const updatedStories = await refreshStories();
+      const setTotal = updatedStories
+        ? summarizeSets(updatedStories)[setKey(editedStory.affect, editedStory.setNumber)].total
+        : null;
+      if (setTotal !== null && setTotal < SET_MIN) {
+        const entry = { name: 'record', affect: editedStory.affect, setNumber: editedStory.setNumber, depth: screen.depth };
+        history.replaceState(entry, '');
+        setScreen(entry);
+        window.scrollTo(0, 0);
+        setNotice(`${setName(editedStory.affect, editedStory.setNumber)} is now ${formatTime(SET_MIN - setTotal)} below the 9:00 minimum. Record another story to bring it back into range.`);
+      } else {
+        setNotice(message);
+        goBack();
+      }
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   if (groups === null) return <Loading text={groupsError ? '' : 'Loading your care teams...'} error={groupsError} />;
@@ -433,6 +449,7 @@ function CareApp({ user }) {
         affect={screen.affect}
         setNumber={screen.setNumber}
         summary={summary}
+        notice={notice}
         onSaved={finishRecording}
         onCancel={() => finishRecording()}
       />
