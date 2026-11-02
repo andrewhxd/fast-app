@@ -164,7 +164,8 @@ Set totals and the Listen screen include only the current care team's stories.
 On a phone, **Menu** (top right) shows your account and opens Home, Record a Story, Listen to Stories, Care team, Your care teams and Sign out.
 - **Record a story**: pick a set; each shows its stories, total and time left to go, with a bar from 0:00 to 11:00 and the 9:00 to 11:00 target shaded.
 A set in range shows "Ready" and can't take more stories.
-- **Recording a story**, in 3 steps (shown under the set's name at the top):
+- **Recording a story**, in 3 steps (shown under the set's name at the top).
+A guide to recording opens over the screen the first time on each device, and from the info button (top right) after that.
   1. Record the storyteller saying the patient's name 3 times.
   2. Record the story.
 The timer continues from the name clip, so it shows the whole story's length toward 5:00, and turns yellow at 4:30.
@@ -292,6 +293,7 @@ Everything else is denied.
 - `src/StorySets.jsx`: the Record a story screen, the set cards (also on Home on a computer), and the set progress bar.
 - `src/RecordStory.jsx`: the recording steps and the too-long screens.
 - `src/RecorderControls.jsx`: the recorder's card and buttons, shared by recording a story and adding a part in the editor.
+- `src/RecordingGuide.jsx`: the How to record a story dialog.
 - `src/useRecorder.js`: records one clip from the microphone, with pause and a timer.
 - `src/LiveWaveform.jsx`: the live volume bars shown while recording.
 - `src/StoryEditor.jsx`: the story editor screen; `src/EditStory.jsx` opens a saved story in it.

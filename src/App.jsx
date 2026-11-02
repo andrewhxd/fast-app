@@ -6,7 +6,6 @@ import Home from './Home.jsx';
 import JoinGroup from './JoinGroup.jsx';
 import NavBar from './NavBar.jsx';
 import RecordStory from './RecordStory.jsx';
-import RecordingGuide from './RecordingGuide.jsx';
 import Sidebar from './Sidebar.jsx';
 import SignIn from './SignIn.jsx';
 import StoryLibrary from './StoryLibrary.jsx';
@@ -83,7 +82,7 @@ const MENU = [
 
 // The menu item each screen belongs to: recording starts from the sets, editing from Listen,
 // and inviting, switching and starting care teams from Care team.
-const SECTION = { record: 'sets', guide: 'sets', edit: 'stories', invite: 'team', teams: 'team', newTeam: 'team' };
+const SECTION = { record: 'sets', edit: 'stories', invite: 'team', teams: 'team', newTeam: 'team' };
 
 // Recording and editing are focused steps: a narrower page, and no leaving it from the sidebar.
 const FOCUSED = ['record', 'edit'];
@@ -296,8 +295,7 @@ function CareApp({ user }) {
   async function finishRecording(message = '') {
     if (message) await refreshStories();
     setNotice(message);
-    if (message && screen.depth >= 2) history.go(-2); // skip the recording guide after saving
-    else goBack();
+    goBack();
   }
 
   // After a story is moved, swapped or deleted: reload the stories, then say what happened.
@@ -343,7 +341,7 @@ function CareApp({ user }) {
   if (!group.groupId) return <Loading />;
 
   const summary = activeStories && summarizeSets(activeStories);
-  const recordInSet = (affect, setNumber) => goTo({ name: 'guide', affect, setNumber });
+  const recordInSet = (affect, setNumber) => goTo({ name: 'record', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
       <BackIcon />
@@ -414,8 +412,6 @@ function CareApp({ user }) {
     content = <main className="content">{status}</main>;
   } else if (screen.name === 'sets') {
     content = <StorySets groupId={group.groupId} summary={summary} notice={notice} backButton={backButton} onRecord={recordInSet} />;
-  } else if (screen.name === 'guide') {
-    content = <RecordingGuide affect={screen.affect} setNumber={screen.setNumber} backButton={backButton} onContinue={() => goTo({ name: 'record', affect: screen.affect, setNumber: screen.setNumber })} />;
   } else if (screen.name === 'stories') {
     content = (
       <StoryLibrary
