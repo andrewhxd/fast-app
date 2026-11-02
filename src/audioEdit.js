@@ -3,7 +3,7 @@
 // recording's timeline, in seconds:
 //
 //   { trimStart, trimEnd, shortenPauses, cuts: [{ start, end }], speedups: [{ start, end, rate }],
-//     inserts: [{ at, samples, replaces }] }
+//     inserts: [{ id, at, samples, replaces }] }
 //
 // so changes are free to undo. An insert is a new recording (decoded samples) placed at `at`;
 // recording over a part also takes that part out while the insert is there (`replaces`:
@@ -188,13 +188,34 @@ export function withCut(edits, start, end) {
 
 // Add a new recording at `at`, or in place of the part [at, replaceEnd] when recording over it.
 export function withInsert(edits, at, samples, replaceEnd = null) {
+  const id = edits.inserts.reduce((most, i) => Math.max(most, i.id), 0) + 1;
   const replaces = replaceEnd === null ? null : { start: at, end: replaceEnd };
-  return { ...edits, inserts: [...edits.inserts, { at, samples, replaces }] };
+  return { ...edits, inserts: [...edits.inserts, { id, at, samples, replaces }] };
+}
+
+// Move an added recording: to `at`, or, for one recorded over a part, to replace [at, replaceEnd].
+export function withMovedInsert(edits, id, at, replaceEnd = null) {
+  return {
+    ...edits,
+    inserts: edits.inserts.map((i) => (i.id !== id ? i : {
+      ...i, at, replaces: i.replaces && { start: at, end: replaceEnd },
+    })),
+  };
 }
 
 // Take out an added recording; a part it recorded over comes back.
-export function withoutInsert(edits, insert) {
-  return { ...edits, inserts: edits.inserts.filter((i) => i !== insert) };
+export function withoutInsert(edits, id) {
+  return { ...edits, inserts: edits.inserts.filter((i) => i.id !== id) };
+}
+
+// Where an added recording starts in the edited story, and how long it is (seconds).
+export function insertSpan(segments, id) {
+  let start = 0;
+  for (const s of segments) {
+    if (s.insert?.id === id) return { start, length: s.end - s.start };
+    start += (s.end - s.start) / s.rate;
+  }
+  return null;
 }
 
 // Play `samples` faster without raising the pitch (SoundTouch's time stretch).

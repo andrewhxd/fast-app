@@ -4,7 +4,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SAMPLE_RATE, noEdits, planSegments, plannedLength, withCut, withInsert, withoutInsert,
+  SAMPLE_RATE, insertSpan, noEdits, planSegments, plannedLength, withCut, withInsert, withMovedInsert, withoutInsert,
 } from '../src/audioEdit.js';
 
 // A new recording `seconds` long.
@@ -38,7 +38,7 @@ describe('adding and recording over parts', () => {
 
   test('removing a recording brings back the part it recorded over', () => {
     const edits = withInsert(story, 3, recording(1), 6);
-    assert.equal(plan(withoutInsert(edits, edits.inserts[0])), '0-10');
+    assert.equal(plan(withoutInsert(edits, edits.inserts[0].id)), '0-10');
   });
 
   test('a part added outside the trimmed ends goes at that end', () => {
@@ -54,5 +54,26 @@ describe('adding and recording over parts', () => {
   test('several parts go in order, whatever order they were added in', () => {
     const edits = withInsert(withInsert(story, 10, recording(1)), 5, recording(0.5));
     assert.equal(plan(edits), '0-5 +0.5 5-10 +1');
+  });
+
+  test('an added part can be moved', () => {
+    const edits = withInsert(story, 4, recording(2));
+    assert.equal(plan(withMovedInsert(edits, edits.inserts[0].id, 7)), '0-7 +2 7-10');
+  });
+
+  test('a part recorded over can be moved and resized', () => {
+    const edits = withInsert(story, 3, recording(1), 6);
+    assert.equal(plan(withMovedInsert(edits, edits.inserts[0].id, 5, 9)), '0-5 +1 9-10');
+  });
+
+  test('each added part keeps its own id', () => {
+    const edits = withInsert(withInsert(story, 2, recording(1)), 8, recording(1));
+    assert.deepEqual(edits.inserts.map((i) => i.id), [1, 2]);
+    assert.equal(plan(withoutInsert(edits, 1)), '0-8 +1 8-10');
+  });
+
+  test('where an added part plays in the edited story', () => {
+    const edits = withInsert(withCut(story, 1, 3), 5, recording(2));
+    assert.deepEqual(insertSpan(planSegments(edits, []), edits.inserts[0].id), { start: 3, length: 2 });
   });
 });

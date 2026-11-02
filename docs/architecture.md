@@ -129,6 +129,7 @@ When seeking to another clip, the player waits for its metadata before applying 
 - An edit is just a description over the original recording, in seconds: `{ trimStart, trimEnd, shortenPauses, cuts, speedups, inserts }`.
 An insert is a new recording (decoded samples) placed at `at`; recording over a part also takes out `replaces` while the insert is there, so removing it brings the part back.
 Inserts are kept whole: trims, cuts, pauses and speed-ups apply only to the original recording.
+Each insert has an `id`, so it can be moved (`withMovedInsert()`) or removed; `insertSpan()` says where it plays in the edited story, for the editor's "Listen" around it.
 Nothing is processed until the preview plays or the story is saved, so every change is free to undo.
 - `findPauses()` finds quiet stretches of 1.5 seconds or more, with a threshold computed from the recording itself.
 Shortening keeps half a second of each.

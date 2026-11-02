@@ -178,7 +178,7 @@ An **Edit** button opens the story editor.
   - **Trim** the start and end by dragging the purple handles on the waveform (or with the arrow keys).
   - **Shorten long pauses**: one switch shortens every silence over 1½ seconds to half a second.
   - **Speed up or cut a part**: drag across part of the waveform, then play it at 1.1× or 1.2× (the voice keeps its natural pitch) or cut it.
-  - **Add or record over a part**: tap a spot on the waveform and record a new part there, or drag across a part and record something in its place. Added parts show as red marks and can be removed one by one (a part recorded over comes back).
+  - **Add or record over a part**: tap a spot on the waveform and record a new part there, or drag across a part and record something in its place. Added parts show as red marks and can be moved afterwards: drag a mark, or a part recorded over by its box (or its edges, to change what it replaces), with **Listen** playing a few seconds either side; each can be removed (a part recorded over comes back).
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
 An edited saved story replaces the old one in one step, so it's never half saved, and the earlier version goes to Recently deleted.
