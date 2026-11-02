@@ -44,6 +44,7 @@ export default function RecordingGuide({ affect, setNumber, backButton, onContin
           {step > 0 && <button className="pill pill-white" onClick={() => setStep(step - 1)}>Previous</button>}
           <button className="pill pill-primary" onClick={() => step === steps.length - 1 ? onContinue() : setStep(step + 1)}>{step === steps.length - 1 ? 'Continue to recording' : 'Next'}</button>
         </div>
+        <button className="pill pill-quiet" onClick={onContinue}>Skip instructions</button>
       </main>
     </>
   );
