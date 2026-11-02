@@ -114,6 +114,8 @@ Both clips of a story must be in the same format, because they're stored as one 
 - `ClipPlayer` plays a list of clips back to back as if they were one recording: a story is `[name, story]`, a set is every story's clips in order.
 - **Pass the same `clips` array on every render** (from `useMemo` or a ref), or the player rebuilds its URLs and restarts.
 `StoryLibrary` keeps its arrays in refs for this reason.
+- The seek bar uses measured clip durations to map a position across the name and story clips, including across stories in a set.
+When seeking to another clip, the player waits for its metadata before applying the position.
 - Only one player plays at a time: a module-level `current` remembers the playing player, and starting another pauses it.
 - Two looks: the full player (play button, label, progress bar) and `compact` (a story row).
 

@@ -18,12 +18,13 @@ const NO_CLIPS = [];
 //   `idleLabel` shows above the bar before playback starts.
 // - compact: a small play button beside `title` and a line of `details` with the time,
 //   for a row in a list. `total` is the length to show while the audio loads.
-export default function ClipPlayer({ clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal }) {
+export default function ClipPlayer({ clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal, trailing }) {
   const audioRef = useRef(null);
   const [index, setIndex] = useState(0); // the clip in the player
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0); // ms from the start of the first clip
   const owner = useRef({ pause: () => {} }); // this player, as other players see it
+  const pendingSeek = useRef(null); // seconds within a clip whose metadata is still loading
   const list = clips ?? NO_CLIPS;
 
   function pause() {
@@ -75,6 +76,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
   }
 
   function handleTimeUpdate() {
+    if (pendingSeek.current !== null || !list[index]) return;
     const clipTime = Math.min(audioRef.current.currentTime * 1000, list[index].duration);
     setPosition(offset + clipTime);
   }
@@ -88,9 +90,45 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
     }
   }
 
+  function seek(value) {
+    if (!clips || !total) return;
+    const target = Math.max(0, Math.min(Number(value), total));
+    let nextIndex = 0;
+    let start = 0;
+    while (nextIndex < list.length - 1 && target >= start + list[nextIndex].duration) {
+      start += list[nextIndex].duration;
+      nextIndex += 1;
+    }
+    const seconds = (target - start) / 1000;
+    setPosition(target);
+    if (nextIndex === index && audioRef.current.readyState >= 1) {
+      pendingSeek.current = null;
+      audioRef.current.currentTime = seconds;
+    } else {
+      pendingSeek.current = seconds;
+      if (nextIndex !== index) setIndex(nextIndex);
+    }
+  }
+
+  function handleMetadata() {
+    if (pendingSeek.current === null) return;
+    audioRef.current.currentTime = pendingSeek.current;
+    pendingSeek.current = null;
+  }
+
   const started = playing || (position > 0 && position < total);
   const audio = clips && (
-    <audio ref={audioRef} src={urls[index]} preload="auto" onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} />
+    <audio ref={audioRef} src={urls[index]} preload="auto" onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} />
+  );
+  const progress = (
+    <div className="seek-control">
+      <input type="range" min="0" max="1000" step="1" value={total ? Math.round(Math.min(position, total) / total * 1000) : 0}
+        disabled={!clips || !urls.length || !total} onChange={(event) => seek(Number(event.target.value) / 1000 * total)}
+        aria-label={`Playback position${title ? ` for ${title}` : ''}`}
+        aria-valuetext={`${formatTime(position)} of ${formatTime(total)}`}
+        style={{ '--seek-progress': `${total ? position / total * 100 : 0}%` }} />
+      {!compact && <div className="seek-times"><span>{formatTime(position)}</span><span>{formatTime(total)}</span></div>}
+    </div>
   );
   const button = (
     <button
@@ -104,7 +142,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
   );
 
   if (compact) {
-    const time = started ? `${formatTime(position)} of ${formatTime(total)}` : formatTime(total);
+    const time = `${formatTime(position)} of ${formatTime(total)}`;
     return (
       <div className="mini-player">
         {audio}
@@ -116,6 +154,8 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
             {clips ? time : `${time} · Loading...`}
           </span>
         </span>
+        {trailing}
+        {progress}
       </div>
     );
   }
@@ -127,13 +167,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
       {button}
       <div className="player-track">
         {label && <span className="player-label">{label}</span>}
-        <div className="bar">
-          <div className="bar-fill" style={{ width: `${total ? (position / total) * 100 : 0}%` }} />
-        </div>
-        <div className="bar-labels">
-          <span>{formatTime(position)}</span>
-          <span>{formatTime(total)}</span>
-        </div>
+        {progress}
       </div>
     </div>
   );
