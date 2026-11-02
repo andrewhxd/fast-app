@@ -101,6 +101,8 @@ To add or change a story field:
 
 - `RecordStory` is a small state machine over `step`: `name` → `story` → `review`, with `tooLong` or `overSet` when the story doesn't fit, and `edit` for the editor.
 The step number shown (1 to 3) is derived from it.
+- On review, changing the affect selects the accepting set with the most room that fits the whole recording, with set 1 breaking ties.
+Returning to the starting affect selects the original set; ready sets do not accept new recordings.
 - `useRecorder` wraps `MediaRecorder`: start, pause, resume, stop, a 100 ms timer, and clean-up of the microphone if the screen closes mid-recording.
 `stop()` resolves to `{ blob, duration }`.
 - The format comes from `src/audio.js`: AAC in MP4 when the browser supports it (every iPhone and modern Chrome), otherwise WebM or Ogg with Opus, at 64 kbps.

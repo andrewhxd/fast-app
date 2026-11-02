@@ -285,7 +285,8 @@ function CareApp({ user }) {
   async function finishRecording(message = '') {
     if (message) await refreshStories();
     setNotice(message);
-    goBack();
+    if (message && screen.depth >= 2) history.go(-2); // skip the recording guide after saving
+    else goBack();
   }
 
   // After a story is moved, swapped or deleted: reload the stories, then say what happened.
