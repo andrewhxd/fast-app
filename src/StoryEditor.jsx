@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import NavBar from './NavBar.jsx';
 import { wakeAudio } from './LiveWaveform.jsx';
+import { RecordButtons, RecorderCard } from './RecorderControls.jsx';
 import { BackIcon, ChevronIcon, PlayIcon, StopIcon } from './icons.jsx';
 import {
   SAMPLE_RATE, decodeClip, encodeMp3, findPauses, isEdited, lengthOf, noEdits, pauseSavings, peaks, planSegments,
-  plannedLength, render, withCut, withSpeedup,
+  plannedLength, render, withCut, withInsert, withSpeedup, withoutInsert,
 } from './audioEdit.js';
 import { formatTime } from './stories.js';
+import { useRecorder } from './useRecorder.js';
 
 const BARS = 64;
 const MIN_KEEP = 1; // the trim handles keep at least this much (seconds)
@@ -47,8 +49,8 @@ function LengthCard({ before, after, maxLength, limitText }) {
   );
 }
 
-// The story editor: trim the ends, shorten long pauses, and speed up or cut a part, with a live
-// length readout and a preview. `name` and `story` are the recorded clips ({ blob, duration }).
+// The story editor: trim the ends, shorten long pauses, speed up or cut a part, and add a new part
+// or record over one, with a live length readout and a preview. `name` and `story` are the recorded clips ({ blob, duration }).
 // The name clip isn't edited, but it counts toward `maxLength` (ms): the most the story may be.
 // `limitText` explains that limit. onSave({ name, story }) gets both clips as MP3, because a story's
 // two clips are stored in one format; it can return a promise while it saves them.
@@ -57,8 +59,12 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const [nameSamples, setNameSamples] = useState(null);
   const [pauses, setPauses] = useState([]);
   const [edits, setEdits] = useState(null);
-  const [mode, setMode] = useState('main'); // 'main', or 'part' while speeding up or cutting a part
-  const [selection, setSelection] = useState(null); // { start, end } of the part, in seconds
+  // 'main'; 'part' while speeding up or cutting a part; 'add' while adding a part or recording over one
+  const [mode, setMode] = useState('main');
+  // { start, end } of the picked part, in seconds. In 'add', start === end is a spot to add at.
+  const [selection, setSelection] = useState(null);
+  const recorder = useRecorder();
+  const [adding, setAdding] = useState(false); // decoding a new recording
   const [rate, setRate] = useState(1.1);
   const [preview, setPreview] = useState(null); // { loading } or { position } while the preview plays
   const [saving, setSaving] = useState(false);
@@ -159,7 +165,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }
 
   function pointerDown(event) {
-    if (!edits || saving) return;
+    if (!edits || saving || recorder.state !== 'idle' || adding) return;
     const time = timeAt(event.clientX);
     if (mode === 'main') {
       // Grab the nearest trim handle, if the touch is close enough to it.
@@ -184,8 +190,10 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }
 
   function pointerUp() {
-    if (dragRef.current && typeof dragRef.current !== 'string' && selection && selection.end - selection.start < 0.5) {
-      setSelection(null); // a tap, not a drag
+    const drag = dragRef.current;
+    if (drag && typeof drag !== 'string' && selection && selection.end - selection.start < 0.5) {
+      // A tap, not a drag: when adding, it's the spot to add at; otherwise nothing is picked.
+      setSelection(mode === 'add' ? { start: drag.anchor, end: drag.anchor } : null);
     }
     dragRef.current = null;
   }
@@ -215,6 +223,37 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
     setMode('main');
   }
 
+  function leaveMode() {
+    setMode('main');
+    setSelection(null);
+    setError('');
+  }
+
+  async function startAdding() {
+    setError('');
+    try {
+      await recorder.start();
+    } catch (err) {
+      setError(`Could not start recording: ${err.message}`);
+    }
+  }
+
+  // The new recording goes in at the spot, or in place of the picked part.
+  async function finishAdding() {
+    setAdding(true);
+    try {
+      const take = await recorder.stop();
+      const decoded = await decodeClip(take.blob);
+      const over = selection.end > selection.start;
+      setEdits((e) => withInsert(e, selection.start, decoded, over ? selection.end : null));
+      leaveMode();
+    } catch (err) {
+      setError(`Could not add the recording: ${err.message}`);
+    } finally {
+      setAdding(false);
+    }
+  }
+
   async function save() {
     if (!edited) {
       onCancel(); // nothing changed
@@ -242,8 +281,8 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   function barClass(index) {
     const time = ((index + 0.5) / BARS) * length;
     if (time < edits.trimStart || time > edits.trimEnd) return 'wave-bar trimmed';
-    if (mode === 'part' && selection && time >= selection.start && time <= selection.end) return 'wave-bar picked';
-    const segment = segments.find((s) => time >= s.start && time < s.end);
+    if (mode !== 'main' && selection && time >= selection.start && time <= selection.end) return 'wave-bar picked';
+    const segment = segments.find((s) => !s.insert && time >= s.start && time < s.end);
     if (!segment) return 'wave-bar removed';
     return segment.rate > 1 ? 'wave-bar faster' : 'wave-bar';
   }
@@ -253,6 +292,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const trimSaved = edits ? edits.trimStart + (length - edits.trimEnd) : 0;
   const savedByPauses = pauseSavings(pauses);
   const partCount = edits ? edits.speedups.length + edits.cuts.length : 0;
+  const addedCount = edits ? edits.inserts.length : 0;
 
   if (!edits) {
     return (
@@ -268,7 +308,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const waveform = (
     <div
       ref={waveRef}
-      className={`waveform-edit${mode === 'part' ? ' picking' : ''}`}
+      className={`waveform-edit${mode !== 'main' ? ' picking' : ''}`}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
@@ -280,8 +320,14 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
         const height = className.endsWith('removed') ? '4px' : `${Math.max(6, level * 100)}%`;
         return <span key={index} className={className} style={{ height }} />;
       })}
-      {mode === 'part' && selection && (
+      {edits.inserts.map((insert) => (
+        <span key={insert.at + ':' + insert.samples.length} className="insert-mark" style={{ left: percent(insert.at) }} aria-hidden="true" />
+      ))}
+      {mode !== 'main' && selection && selection.end > selection.start && (
         <span className="pick-box" style={{ left: percent(selection.start), width: percent(selection.end - selection.start) }} />
+      )}
+      {mode === 'add' && selection && selection.end === selection.start && (
+        <span className="spot-mark" style={{ left: percent(selection.start) }} aria-hidden="true" />
       )}
       {mode === 'main' && (
         <>
@@ -325,6 +371,81 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       <span>{end}</span>
     </div>
   );
+
+  if (mode === 'add') {
+    const over = selection && selection.end > selection.start;
+    const recording = recorder.state !== 'idle';
+    // What the new recording can be and still fit: the room left, plus the part it records over.
+    const room = maxLength - SAFETY - after + (over ? (selection.end - selection.start) * 1000 : 0);
+    let picked = 'Tap a spot, or drag across a part';
+    if (selection) {
+      picked = over
+        ? <>Recording over {seconds(selection.start)} to {seconds(selection.end)} · <span>{seconds(selection.end - selection.start)}</span></>
+        : <>The new part goes at {seconds(selection.start)}</>;
+    }
+    return (
+      <>
+        <NavBar
+          left={(
+            <button className="nav-button" onClick={leaveMode} disabled={recording || adding}>
+              <BackIcon />
+              Edit
+            </button>
+          )}
+          title="Add or record over"
+        />
+        <main className="content">
+          <p className="lead">Tap where a new part should go, or drag across a part to record over it.</p>
+          <section className="card wave-card">
+            {waveform}
+            {ruler}
+            <p className="pick-text">{picked}</p>
+          </section>
+
+          {selection && (
+            <>
+              <RecorderCard tint="" recorder={recorder} length={recorder.elapsed} />
+              <p className="hint">
+                {room > 0 ? `Up to ${formatTime(room)} fits.` : 'The story is already at its limit. Record over a part, or shorten it first.'}
+              </p>
+            </>
+          )}
+          {(error || recorder.error) && <p className="error" role="alert">{error || recorder.error}</p>}
+
+          {addedCount > 0 && !recording && (
+            <section className="group-section">
+              <h2 className="group-label">Added parts</h2>
+              <div className="story-list">
+                {edits.inserts.map((insert) => (
+                  <div key={insert.at + ':' + insert.samples.length} className="story-row added-row">
+                    <span className="mini-text">
+                      <strong>{seconds(lengthOf(insert.samples))} {insert.replaces ? 'recorded over a part' : 'added'}</strong>
+                      <span>
+                        {insert.replaces
+                          ? `In place of ${seconds(insert.replaces.start)} to ${seconds(insert.replaces.end)}`
+                          : `At ${seconds(insert.at)}`}
+                      </span>
+                    </span>
+                    <button className="action delete" onClick={() => setEdits((e) => withoutInsert(e, insert))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {selection && (
+            <div className="actions">
+              <RecordButtons
+                recorder={recorder}
+                finishLabel={adding ? 'Adding...' : over ? 'Use this instead' : 'Add this part'}
+                onStart={startAdding}
+                onStop={finishAdding}
+              />
+            </div>
+          )}
+        </main>
+      </>
+    );
+  }
 
   if (mode === 'part') {
     return (
@@ -439,6 +560,17 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
                     edits.cuts.length && `${edits.cuts.length} cut`,
                   ].filter(Boolean).join(' · ')
                   : 'Pick a part, then play it faster or cut it'}
+              </span>
+            </span>
+            <ChevronIcon />
+          </button>
+          <button className="tool-row" onClick={() => setMode('add')} disabled={saving}>
+            <span className="tool-text">
+              <strong>Add or record over a part</strong>
+              <span>
+                {addedCount
+                  ? `${addedCount} ${addedCount === 1 ? 'part' : 'parts'} added`
+                  : 'Record something new, at any point'}
               </span>
             </span>
             <ChevronIcon />

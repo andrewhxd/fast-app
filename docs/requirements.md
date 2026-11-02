@@ -90,7 +90,7 @@ User stories (slide 11), all built unless marked:
 - See each set's progress toward 9:00 to 11:00.
 - Be told when a story is over 5 minutes, and choose to delete and re-record or edit it.
 - Play back what was just recorded.
-- Delete and add segments to a recording. **Partly built**: the editor cuts and speeds up parts but can't add new audio into a story.
+- Delete and add segments to a recording. Built: the editor cuts parts, adds new recordings at any point, and records over a part.
 - Add a title, storyteller name, relationship (Mother, Father, Sister, Brother, Aunt, Uncle, Cousin or Friend) and affect (happy, or challenging/neutral).
 - If a story would take its set over 11:00, choose to re-record or edit it, after seeing the time left in the set and the story's length.
 - Once all 4 sets are complete, a clinician does a final review and approves them, after which nothing can be edited. **Not built.**

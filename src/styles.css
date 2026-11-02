@@ -1418,6 +1418,44 @@ button:disabled {
   pointer-events: none;
 }
 
+/* Where a new part was added (insert-mark), or where one will go (spot-mark). */
+.insert-mark,
+.spot-mark {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--record);
+  pointer-events: none;
+}
+
+.insert-mark::before,
+.spot-mark::before {
+  content: '';
+  position: absolute;
+  top: -0.25rem;
+  left: 50%;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background-color: inherit;
+  transform: translateX(-50%);
+}
+
+.spot-mark {
+  background-color: var(--primary);
+}
+
+.added-row {
+  padding-right: 0.75rem;
+}
+
+.added-row .action {
+  padding: 0 1rem;
+}
+
 .ruler {
   display: flex;
   justify-content: space-between;

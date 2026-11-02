@@ -104,6 +104,7 @@ npm run dev:remote   # http://localhost:5173, against the dev Firebase project
 npm run build        # production build into dist/, for the live project
 npm run deploy:dev   # build for the dev project and deploy it to https://fast-app-cs499-dev.web.app
 npm run deploy:branch # build for the dev project and deploy it to a 7-day preview address named after the branch
+npm run test:unit    # the story editor's plan (tests/audioEdit.test.js)
 npm run test:rules   # the security rules tests (tests/rules.test.js), against the Firestore emulator
 ```
 
@@ -116,7 +117,7 @@ The seed writes through the security rules, the way the app does, so a data mode
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
-The security rules have tests (`npm run test:rules`); there is no other test suite or linter yet.
+The security rules have tests (`npm run test:rules`), and so does the story editor's plan (`npm run test:unit`); there is no linter yet.
 Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
@@ -177,6 +178,7 @@ An **Edit** button opens the story editor.
   - **Trim** the start and end by dragging the purple handles on the waveform (or with the arrow keys).
   - **Shorten long pauses**: one switch shortens every silence over 1½ seconds to half a second.
   - **Speed up or cut a part**: drag across part of the waveform, then play it at 1.1× or 1.2× (the voice keeps its natural pitch) or cut it.
+  - **Add or record over a part**: tap a spot on the waveform and record a new part there, or drag across a part and record something in its place. Added parts show as red marks and can be removed one by one (a part recorded over comes back).
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
 An edited saved story replaces the old one in one step, so it's never half saved, and the earlier version goes to Recently deleted.
@@ -289,6 +291,7 @@ Everything else is denied.
 - `src/Home.jsx`: the home screen.
 - `src/StorySets.jsx`: the Record a story screen, the set cards (also on Home on a computer), and the set progress bar.
 - `src/RecordStory.jsx`: the recording steps and the too-long screens.
+- `src/RecorderControls.jsx`: the recorder's card and buttons, shared by recording a story and adding a part in the editor.
 - `src/useRecorder.js`: records one clip from the microphone, with pause and a timer.
 - `src/LiveWaveform.jsx`: the live volume bars shown while recording.
 - `src/StoryEditor.jsx`: the story editor screen; `src/EditStory.jsx` opens a saved story in it.

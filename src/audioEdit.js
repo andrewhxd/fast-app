@@ -1,9 +1,15 @@
-// Story editing: trim the ends, shorten long pauses, cut parts, and speed parts up (keeping the
-// voice's pitch). An edit is only a description over the original recording's timeline, in seconds:
+// Story editing: trim the ends, shorten long pauses, cut parts, speed parts up (keeping the
+// voice's pitch), and add new recordings. An edit is only a description over the original
+// recording's timeline, in seconds:
 //
-//   { trimStart, trimEnd, shortenPauses, cuts: [{ start, end }], speedups: [{ start, end, rate }] }
+//   { trimStart, trimEnd, shortenPauses, cuts: [{ start, end }], speedups: [{ start, end, rate }],
+//     inserts: [{ at, samples, replaces }] }
 //
-// so changes are free to undo. The audio is only processed ("rendered") to preview or save.
+// so changes are free to undo. An insert is a new recording (decoded samples) placed at `at`;
+// recording over a part also takes that part out while the insert is there (`replaces`:
+// { start, end }, or null). Inserts are kept whole:
+// trims, cuts, pauses and speed-ups apply only to the original recording.
+// The audio is only processed ("rendered") to preview or save.
 
 export const SAMPLE_RATE = 44_100;
 const PAUSE_MIN = 1.5; // a quiet stretch at least this long is a long pause (seconds)
@@ -80,11 +86,12 @@ export function pauseSavings(pauses) {
 }
 
 export function noEdits(length) {
-  return { trimStart: 0, trimEnd: length, shortenPauses: false, cuts: [], speedups: [] };
+  return { trimStart: 0, trimEnd: length, shortenPauses: false, cuts: [], speedups: [], inserts: [] };
 }
 
 export function isEdited(edits, length) {
-  return edits.trimStart > 0 || edits.trimEnd < length || edits.shortenPauses || edits.cuts.length > 0 || edits.speedups.length > 0;
+  return edits.trimStart > 0 || edits.trimEnd < length || edits.shortenPauses
+    || edits.cuts.length > 0 || edits.speedups.length > 0 || edits.inserts.length > 0;
 }
 
 // Intervals in `keep` with everything in `remove` taken out.
@@ -102,9 +109,40 @@ function subtract(keep, remove) {
   return result.filter((k) => k.end - k.start > 0.005);
 }
 
-// The parts of the original recording that are kept, in order, each with the rate it plays at.
+// The edited story's pieces, in order: the parts of the original recording that are kept, each
+// with the rate it plays at ({ start, end, rate }), and the added recordings where they go
+// ({ insert, start: 0, end: its length, rate: 1 }). An insert placed before the trimmed start or
+// after the trimmed end goes at that end.
 export function planSegments(edits, pauses) {
-  const removed = [...edits.cuts];
+  const pieces = planOriginal(edits, pauses);
+  const inserts = edits.inserts
+    .map((insert) => ({ insert, at: Math.min(Math.max(insert.at, edits.trimStart), edits.trimEnd) }))
+    .sort((a, b) => a.at - b.at); // stable, so inserts at the same point stay in the order they were added
+  const asPiece = ({ insert }) => ({ insert, start: 0, end: lengthOf(insert.samples), rate: 1 });
+
+  const out = [];
+  let next = 0; // the next insert to place
+  for (const piece of pieces) {
+    let start = piece.start;
+    // Inserts at or before this point go first; one inside the piece splits it.
+    while (next < inserts.length && inserts[next].at < piece.end) {
+      const { at } = inserts[next];
+      if (at > start + 0.005) {
+        out.push({ ...piece, start, end: at });
+        start = at;
+      }
+      out.push(asPiece(inserts[next]));
+      next += 1;
+    }
+    if (piece.end - start > 0.005) out.push({ ...piece, start });
+  }
+  for (; next < inserts.length; next++) out.push(asPiece(inserts[next]));
+  return out;
+}
+
+// The parts of the original recording that are kept, in order, each with the rate it plays at.
+function planOriginal(edits, pauses) {
+  const removed = [...edits.cuts, ...edits.inserts.filter((i) => i.replaces).map((i) => i.replaces)];
   if (edits.shortenPauses) {
     for (const p of pauses) {
       if (p.end - p.start > PAUSE_KEEP) removed.push({ start: p.start + PAUSE_KEEP / 2, end: p.end - PAUSE_KEEP / 2 });
@@ -148,6 +186,17 @@ export function withCut(edits, start, end) {
   return { ...edits, cuts: [...edits.cuts, { start, end }] };
 }
 
+// Add a new recording at `at`, or in place of the part [at, replaceEnd] when recording over it.
+export function withInsert(edits, at, samples, replaceEnd = null) {
+  const replaces = replaceEnd === null ? null : { start: at, end: replaceEnd };
+  return { ...edits, inserts: [...edits.inserts, { at, samples, replaces }] };
+}
+
+// Take out an added recording; a part it recorded over comes back.
+export function withoutInsert(edits, insert) {
+  return { ...edits, inserts: edits.inserts.filter((i) => i !== insert) };
+}
+
 // Play `samples` faster without raising the pitch (SoundTouch's time stretch).
 async function stretch(samples, rate) {
   const { SoundTouch, SimpleFilter } = await import('soundtouchjs');
@@ -179,11 +228,12 @@ async function stretch(samples, rate) {
   return out;
 }
 
-// Apply the edit: the kept parts, sped up where asked, joined with short fades.
+// Apply the edit: the kept parts, sped up where asked, and the added recordings, joined with short fades.
 export async function render(samples, segments) {
   const pieces = [];
   for (const segment of segments) {
-    let piece = samples.slice(Math.round(segment.start * SAMPLE_RATE), Math.round(segment.end * SAMPLE_RATE));
+    const source = segment.insert ? segment.insert.samples : samples;
+    let piece = source.slice(Math.round(segment.start * SAMPLE_RATE), Math.round(segment.end * SAMPLE_RATE));
     if (segment.rate !== 1) piece = await stretch(piece, segment.rate);
     pieces.push(piece);
   }
