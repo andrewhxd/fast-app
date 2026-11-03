@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import ClipPlayer from './ClipPlayer.jsx';
 import NavBar from './NavBar.jsx';
+import RecordingGuide, { GUIDE_STEP, seenRecordingGuide } from './RecordingGuide.jsx';
 import { RecordButtons, RecorderCard } from './RecorderControls.jsx';
 import StoryEditor from './StoryEditor.jsx';
-import { RedoIcon, ScissorsIcon } from './icons.jsx';
+import { InfoIcon, RedoIcon, ScissorsIcon } from './icons.jsx';
 import { addStory } from './storage.js';
 import {
   NAME_MAX, RELATIONSHIPS, SET_MAX, STORY_MAX, bestRecordingSet, fitsInSet, formatTime, setKey, setName, setStatus,
@@ -38,6 +39,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [guideStep, setGuideStep] = useState(() => (seenRecordingGuide() ? null : 0)); // the guide's first card, or null when closed
 
   const nameTime = nameTake?.duration ?? 0;
   const takeTime = nameTime + (storyTake?.duration ?? 0); // this story, name included
@@ -164,7 +166,19 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         )}
         title={targetNumber === null ? 'Record a story' : set}
         subtitle={`Step ${stepNumber} of 3`}
+        right={(
+          <button
+            className="icon-button"
+            onClick={() => setGuideStep(GUIDE_STEP[step])}
+            disabled={saving || recorder.state === 'recording'}
+            aria-label="How to record a story"
+            title="How to record a story"
+          >
+            <InfoIcon />
+          </button>
+        )}
       />
+      {guideStep !== null && <RecordingGuide affect={affect} set={set} startStep={guideStep} onClose={() => setGuideStep(null)} />}
 
       <main className="content">
         {step === 'name' && (
