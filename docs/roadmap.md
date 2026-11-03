@@ -49,7 +49,7 @@ On iPhone, web push only works for a web app added to the Home Screen.
 
 ## 5. Smaller gaps
 
-- Instructions screens for recording and for playing (slides 11 and 23).
+- Instructions screen for playing (slide 23).
 - Editing a saved story's title, storyteller and relationship (the rules currently allow only `setNumber` to change).
 - Adding new audio into a story (slide 11, "add segments").
 - Automatic regrouping into sets that fit 9:00 to 11:00 (slides 19 and 21): a small partitioning problem, best offered as a suggestion the family confirms.

@@ -101,6 +101,8 @@ To add or change a story field:
 
 - `RecordStory` is a small state machine over `step`: `name` → `story` → `review`, with `tooLong` or `overSet` when the story doesn't fit, and `edit` for the editor.
 The step number shown (1 to 3) is derived from it.
+- On review, changing the affect selects the accepting set with the most room that fits the whole recording, with set 1 breaking ties.
+Returning to the starting affect selects the original set; ready sets do not accept new recordings.
 - `useRecorder` wraps `MediaRecorder`: start, pause, resume, stop, a 100 ms timer, and clean-up of the microphone if the screen closes mid-recording.
 `stop()` resolves to `{ blob, duration }`.
 - The format comes from `src/audio.js`: AAC in MP4 when the browser supports it (every iPhone and modern Chrome), otherwise WebM or Ogg with Opus, at 64 kbps.
@@ -114,6 +116,8 @@ Both clips of a story must be in the same format, because they're stored as one 
 - `ClipPlayer` plays a list of clips back to back as if they were one recording: a story is `[name, story]`, a set is every story's clips in order.
 - **Pass the same `clips` array on every render** (from `useMemo` or a ref), or the player rebuilds its URLs and restarts.
 `StoryLibrary` keeps its arrays in refs for this reason.
+- The seek bar uses measured clip durations to map a position across the name and story clips, including across stories in a set.
+When seeking to another clip, the player waits for its metadata before applying the position.
 - Only one player plays at a time: a module-level `current` remembers the playing player, and starting another pauses it.
 - Two looks: the full player (play button, label, progress bar) and `compact` (a story row).
 

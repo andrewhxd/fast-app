@@ -64,6 +64,16 @@ export function setStatus(total) {
   return 'short';
 }
 
+// Pick the set with the most room that is still accepting stories. Ties go to set 1.
+export function bestRecordingSet(summary, affect, length) {
+  return [1, 2]
+    .filter((number) => {
+      const total = summary[setKey(affect, number)].total;
+      return setStatus(total) === 'short' && fitsInSet(total, length);
+    })
+    .sort((a, b) => summary[setKey(affect, a)].total - summary[setKey(affect, b)].total || a - b)[0] ?? null;
+}
+
 // A set's status in a few words: "In range", "4:48 to go" or "Over by 0:50".
 export function setStatusText(total) {
   const status = setStatus(total);

@@ -6,7 +6,7 @@ import StoryEditor from './StoryEditor.jsx';
 import { PauseIcon, PlayIcon, RedoIcon, ScissorsIcon, StopIcon } from './icons.jsx';
 import { addStory } from './storage.js';
 import {
-  NAME_MAX, RELATIONSHIPS, SET_MAX, STORY_MAX, STORY_WARN, fitsInSet, formatTime, setKey, setName,
+  NAME_MAX, RELATIONSHIPS, SET_MAX, STORY_MAX, STORY_WARN, bestRecordingSet, fitsInSet, formatTime, setKey, setName, setStatus,
 } from './stories.js';
 import { useRecorder } from './useRecorder.js';
 
@@ -105,7 +105,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   const [nameTake, setNameTake] = useState(null); // { blob, duration }
   const [storyTake, setStoryTake] = useState(null);
   const [edited, setEdited] = useState(false);
-  const [affect, setAffect] = useState(startAffect); // can change on review; the set number stays
+  const [affect, setAffect] = useState(startAffect); // can change on review
   const [title, setTitle] = useState('');
   const [storyteller, setStoryteller] = useState('');
   const [relationship, setRelationship] = useState('');
@@ -113,16 +113,21 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const setTime = summary[setKey(affect, setNumber)].total; // already in the set
-  const room = SET_MAX - setTime; // how much more this set can take
-  const limit = Math.min(STORY_MAX, room); // the most this story can be
   const nameTime = nameTake?.duration ?? 0;
   const takeTime = nameTime + (storyTake?.duration ?? 0); // this story, name included
-  const fits = takeTime <= STORY_MAX && fitsInSet(setTime, takeTime);
+  const changedAffect = affect !== startAffect;
+  const targetNumber = changedAffect ? bestRecordingSet(summary, affect, takeTime) : setNumber;
+  const setTime = summary[setKey(affect, targetNumber ?? setNumber)].total;
+  const room = SET_MAX - setTime;
+  const fits = targetNumber !== null && setStatus(setTime) === 'short' && takeTime <= STORY_MAX && fitsInSet(setTime, takeTime);
+  // If neither set fits, let the editor shorten toward the largest available space.
+  const editNumber = targetNumber ?? bestRecordingSet(summary, affect, 0);
+  const editRoom = editNumber === null ? STORY_MAX : SET_MAX - summary[setKey(affect, editNumber)].total;
+  const limit = Math.min(STORY_MAX, editRoom);
   const elapsed = recorder.state === 'idle' ? 0 : recorder.elapsed;
   const clips = useMemo(() => [nameTake, storyTake], [nameTake, storyTake]); // the same array while typing
   const tint = `tint-${affect}`;
-  const set = setName(affect, setNumber);
+  const set = setName(affect, targetNumber ?? setNumber);
 
   async function startRecording() {
     setError('');
@@ -174,6 +179,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   }
 
   async function save() {
+    if (!fits) return;
     if (!title.trim() || !storyteller.trim() || !relationship) {
       setError('Fill in the title, storyteller and relationship first.');
       return;
@@ -189,7 +195,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         storyteller: storyteller.trim(),
         relationship,
         affect,
-        setNumber,
+        setNumber: targetNumber,
       });
     } catch (err) {
       setError(`Could not save: ${SAVE_ERRORS[err.code] ?? err.message}`);
@@ -205,7 +211,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         name={nameTake}
         story={storyTake}
         maxLength={limit}
-        limitText={room < STORY_MAX ? `${set} has room for ${formatTime(room)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
+        limitText={editRoom < STORY_MAX ? `${setName(affect, editNumber)} has room for ${formatTime(editRoom)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
         onSave={(editedClips) => {
           setNameTake(editedClips.name);
           setStoryTake(editedClips.story);
@@ -230,7 +236,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
             Cancel
           </button>
         )}
-        title={set}
+        title={targetNumber === null ? 'Record a story' : set}
         subtitle={`Step ${stepNumber} of 3`}
       />
 
@@ -359,9 +365,17 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
               </div>
             </fieldset>
 
+            {changedAffect && targetNumber !== null && (
+              <p className="notice" role="status">This story will be added to {set}.</p>
+            )}
+
             {!fits && (
               <p className="error" role="alert">
-                {set} only has room for {formatTime(room)}, and this story is {formatTime(takeTime)}. Edit it to fit, or pick the other affect.
+                {changedAffect && targetNumber === null
+                  ? editNumber === null
+                    ? <>Both {affect} sets are already ready. Choose the other affect.</>
+                    : <>Neither {affect} set has enough available room for this story. Edit it to fit, or choose the other affect.</>
+                  : <>{set} cannot take this story. Edit it to fit, or choose the other affect.</>}
               </p>
             )}
             {errorMessage}

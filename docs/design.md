@@ -75,6 +75,8 @@ The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one settin
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
 Home already says so.
 - **Recording in 3 steps**: say the name 3 times, tell the story, add details (title, storyteller, relationship, happy or challenging).
+Before recording, a five-card guide shows the selected set, microphone access and the recording steps.
+The guide uses Previous and Next buttons, offers Skip on every step, and shows iPhone and Android microphone permission screenshots.
 The timer shows the 5:00 limit and turns yellow at 4:30 (slide 14).
 When the set has less than 5:00 of room, a "Set full" marker shows where the set would pass 11:00.
 "Finish" is disabled for the first second, so a double tap on Start can't end the recording.

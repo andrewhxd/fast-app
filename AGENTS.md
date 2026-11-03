@@ -185,6 +185,7 @@ Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 **Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
+The set and individual story players have seek bars that move through the name and story recordings.
 - The phone's back button moves between screens.
 
 ### On a computer

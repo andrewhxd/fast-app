@@ -172,8 +172,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
     return (
       <div key={story.id} className="story-item">
         <div className="story-row">
-          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={story.storyteller} total={length} />
-          <button
+          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={story.storyteller} total={length} trailing={<button
             className="more-button"
             onClick={() => toggleActions(story.id)}
             aria-label={`More for ${story.title}`}
@@ -181,7 +180,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
             disabled={busy}
           >
             <MoreIcon />
-          </button>
+          </button>} />
         </div>
         {open && deletingId !== story.id && (
           <div className="story-actions">
@@ -249,6 +248,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
               title={setName(affect, setNumber)}
               details="Whole set"
               total={total}
+              trailing={<span className="status-chip">{setStatusText(total)}</span>}
             />
           ) : (
             <span className="set-text">
@@ -256,7 +256,7 @@ export default function StoryLibrary({ groupId, stories, summary, notice, backBu
               <span>{count ? `${count} ${count === 1 ? 'story' : 'stories'} · ${formatTime(total)}` : 'No stories yet'}</span>
             </span>
           )}
-          <span className="status-chip">{setStatusText(total)}</span>
+          {(!count || arranging) && <span className="status-chip">{setStatusText(total)}</span>}
         </div>
         {(inSet.length > 0 || last) && (
           <div className="story-list">
