@@ -18,7 +18,7 @@ import {
   connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword, signOut, updateProfile,
 } from 'firebase/auth';
 import {
-  Bytes, collection, connectFirestoreEmulator, doc, getFirestore, serverTimestamp, setDoc, writeBatch,
+  Bytes, collection, connectFirestoreEmulator, doc, getFirestore, serverTimestamp, setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore/lite';
 import { loadEnv } from 'vite';
 
@@ -200,6 +200,7 @@ async function saveStory(db, [title, storyteller, relationship, affect, setNumbe
     batch.set(doc(storyRef, 'chunks', String(i)), { data: Bytes.fromUint8Array(piece) });
   }
   await batch.commit();
+  return storyRef;
 }
 
 // Signs in as a demo account, creating it first with a confirmed email address.
@@ -289,6 +290,9 @@ for (const { story } of GROUP_STORIES.filter((g) => g.groupId === 'family-b')) a
 const ann = await signInAs(ANN);
 await startGroup(ann, 'default', 'Sam Smith');
 for (const story of STORIES) await saveStory(db, story, 'default');
+// A deleted story, so Listen's Recently deleted has something to restore.
+const deleted = await saveStory(db, ['Grandpa\'s fishing trip', 'Ann Smith', 'Mother', 'happy', 1, '1:05'], 'default');
+await updateDoc(deleted, { deletedAt: serverTimestamp(), deletedBy: ann.uid });
 const jeffInvite = await invite(ann, 'default', 'Sam Smith', JEFF.email);
 await invite(ann, 'default', 'Sam Smith', 'dave@example.com'); // left pending
 const miaInvite = await invite(ann, 'default', 'Sam Smith', MIA.email); // left pending, to try joining
@@ -298,7 +302,7 @@ await signInWithEmailAndPassword(auth, JEFF.email, PASSWORD);
 await join(auth.currentUser, 'default', jeffInvite);
 await signOut(auth);
 
-console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories in 3 groups, and these accounts (password "${PASSWORD}"):`);
+console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories in 3 groups (and 1 deleted one), and these accounts (password "${PASSWORD}"):`);
 console.log(`  ${ANN.email}   leads Sam Smith's care team (Jeff is a member; Mia and dave@example.com are invited)`);
 console.log(`  ${JEFF.email}  member of Sam Smith, leads Family A`);
 console.log(`  ${MIA.email}   leads Family B. Her invite to Sam Smith: http://localhost:5173/?group=default&invite=${miaInvite}`);

@@ -22,6 +22,22 @@ export const STORY_MAX = 5 * MINUTE; // must match firestore.rules
 export const STORY_WARN = 4.5 * MINUTE; // the story timer turns yellow here
 export const NAME_MAX = 1 * MINUTE; // saying a name 3 times takes seconds; must match firestore.rules
 
+// A deleted story can be restored for this many days, then it's removed for good. Must match firestore.rules.
+export const RECOVERY_DAYS = 30;
+const DAY = 24 * 60 * MINUTE;
+
+// Whole days left to restore a deleted story: 30 on the day it's deleted, then 0 once it's due to go.
+export function recoveryDaysLeft(story, now = Date.now()) {
+  const left = story.deletedAt.toMillis() + RECOVERY_DAYS * DAY - now;
+  return Math.max(0, Math.ceil(left / DAY));
+}
+
+// A deleted story whose recovery period is over. The hour's margin allows for this device's clock
+// running ahead of the server's, which is what the rules check.
+export function isPastRecovery(story, now = Date.now()) {
+  return Boolean(story.deletedAt) && now - story.deletedAt.toMillis() > RECOVERY_DAYS * DAY + 60 * MINUTE;
+}
+
 export function setKey(affect, setNumber) {
   return `${affect}-${setNumber}`;
 }

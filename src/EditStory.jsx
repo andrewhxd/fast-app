@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import NavBar from './NavBar.jsx';
 import StoryEditor from './StoryEditor.jsx';
 import { loadStoryAudio, replaceStoryAudio, splitClips } from './storage.js';
-import { SET_MAX, STORY_MAX, formatTime, setKey, setName, storyLength } from './stories.js';
+import { RECOVERY_DAYS, SET_MAX, STORY_MAX, formatTime, setKey, setName, storyLength } from './stories.js';
 
 // Edit a saved story (from Listen to Stories): open it in the editor, then save the edited audio
 // in its place. The story may grow back up to 5:00, as long as its set stays at or under 11:00.
@@ -46,7 +46,7 @@ export default function EditStory({ groupId, story, summary, onSaved, onCancel }
       limitText={room < STORY_MAX ? `${set} has room for ${formatTime(room)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
       onSave={async (edited) => {
         await replaceStoryAudio(story, edited, groupId);
-        await onSaved(`Saved your edits to "${story.title}".`);
+        await onSaved(`Saved your edits to "${story.title}". The earlier version is in Recently deleted for ${RECOVERY_DAYS} days.`);
       }}
       onCancel={onCancel}
     />

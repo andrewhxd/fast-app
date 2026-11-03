@@ -8,8 +8,8 @@ import {
   assertFails, assertSucceeds, initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
-  Bytes, collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc,
-  updateDoc, where, writeBatch,
+  Bytes, Timestamp, collection, collectionGroup, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp,
+  setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 
 const ANN = { uid: 'ann', email: 'ann@example.com', email_verified: true }; // owner of "sam"
@@ -193,12 +193,93 @@ describe('stories', () => {
     assertFails(updateDoc(doc(as(ANN), 'treatments/demo/stories/s1'), { group: 'rosa' })));
   test('others cannot move it', () => assertFails(updateDoc(doc(as(MIA), 'treatments/demo/stories/s1'), { setNumber: 2 })));
 
-  function remove(db) {
+});
+
+describe('deleting and restoring stories', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const softDelete = (person, fields = {}) =>
+    updateDoc(doc(as(person), 'treatments/demo/stories/s1'), { deletedAt: serverTimestamp(), deletedBy: person.uid, ...fields });
+  // A story deleted `days` ago, written directly (the rules only accept the current time).
+  const deletedDaysAgo = (days) => env.withSecurityRulesDisabled((context) =>
+    updateDoc(doc(context.firestore(), 'treatments/demo/stories/s1'), {
+      deletedAt: Timestamp.fromMillis(Date.now() - days * DAY), deletedBy: 'jeff',
+    }));
+  const restore = (person, setNumber = 1) => updateDoc(doc(as(person), 'treatments/demo/stories/s1'), {
+    deletedAt: deleteField(), deletedBy: deleteField(), replacedBy: deleteField(), setNumber,
+  });
+  function removeForGood(db) {
     const batch = writeBatch(db);
     batch.delete(doc(db, 'treatments/demo/stories/s1/chunks/0'));
     batch.delete(doc(db, 'treatments/demo/stories/s1'));
     return batch.commit();
   }
-  test('a member deletes a story with its audio', () => assertSucceeds(remove(as(JEFF))));
-  test('others cannot', () => assertFails(remove(as(MIA))));
+
+  test('a member deletes a story (it is only marked)', async () => {
+    await assertSucceeds(softDelete(JEFF));
+    await assertSucceeds(getDoc(doc(as(JEFF), 'treatments/demo/stories/s1/chunks/0')));
+  });
+  test('others cannot', () => assertFails(softDelete(MIA)));
+  test('not in the name of someone else', () => assertFails(softDelete(JEFF, { deletedBy: 'ann' })));
+  test('not with a made-up time', () => assertFails(softDelete(JEFF, { deletedAt: Timestamp.fromMillis(0) })));
+  test('not while changing anything else', () => assertFails(softDelete(JEFF, { title: 'Renamed' })));
+  test('not twice', async () => {
+    await deletedDaysAgo(1);
+    await assertFails(softDelete(JEFF));
+  });
+  test('a deleted story cannot move', async () => {
+    await deletedDaysAgo(1);
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { setNumber: 2 }));
+  });
+
+  test('a member restores a deleted story, to either set', async () => {
+    await deletedDaysAgo(29);
+    await assertSucceeds(restore(ANN, 2));
+  });
+  test('others cannot restore it', async () => {
+    await deletedDaysAgo(1);
+    await assertFails(restore(MIA));
+  });
+  test('a restore removes every delete field', async () => {
+    await deletedDaysAgo(1);
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { deletedAt: deleteField(), setNumber: 1 }));
+  });
+  test('restoring changes nothing else', async () => {
+    await deletedDaysAgo(1);
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), {
+      deletedAt: deleteField(), deletedBy: deleteField(), affect: 'challenging',
+    }));
+  });
+
+  test('nobody removes a story for good before 30 days', async () => {
+    await deletedDaysAgo(29);
+    await assertFails(removeForGood(as(ANN)));
+  });
+  test('nor one that was never deleted', () => assertFails(removeForGood(as(ANN))));
+  test('a member removes it for good after 30 days, with its audio', async () => {
+    await deletedDaysAgo(31);
+    await assertSucceeds(removeForGood(as(JEFF)));
+  });
+  test('others cannot', async () => {
+    await deletedDaysAgo(31);
+    await assertFails(removeForGood(as(MIA)));
+  });
+  test('its audio cannot be removed on its own', async () => {
+    await deletedDaysAgo(31);
+    await assertFails(deleteDoc(doc(as(JEFF), 'treatments/demo/stories/s1/chunks/0')));
+  });
+
+  // Saving an edit: the edited story is new, and the earlier version is deleted in the same batch.
+  function saveEdit(db, person, replacedBy = 's2') {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'treatments/demo/stories/s2'), story());
+    batch.set(doc(db, 'treatments/demo/stories/s2/chunks/0'), { data: Bytes.fromUint8Array(new Uint8Array(10)) });
+    batch.update(doc(db, 'treatments/demo/stories/s1'), { deletedAt: serverTimestamp(), deletedBy: person.uid, replacedBy });
+    return batch.commit();
+  }
+  test('saving an edit keeps the earlier version, deleted', () => { const db = as(JEFF); return assertSucceeds(saveEdit(db, JEFF)); });
+  test('replacedBy must be the story saved in the same batch', () => { const db = as(JEFF); return assertFails(saveEdit(db, JEFF, 'nope')); });
+  test('replacedBy cannot name an existing story', async () => {
+    await env.withSecurityRulesDisabled((context) => setDoc(doc(context.firestore(), 'treatments/demo/stories/s3'), story({ createdAt: new Date() })));
+    await assertFails(softDelete(JEFF, { replacedBy: 's3' }));
+  });
 });
