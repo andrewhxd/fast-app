@@ -126,11 +126,14 @@ When seeking to another clip, the player waits for its metadata before applying 
 
 ## The story editor (`src/StoryEditor.jsx`, `src/audioEdit.js`)
 
-- An edit is just a description over the original recording, in seconds: `{ trimStart, trimEnd, shortenPauses, cuts, speedups }`.
+- An edit is just a description over the original recording, in seconds: `{ trimStart, trimEnd, shortenPauses, cuts, speedups, inserts }`.
+An insert is a new recording (decoded samples) placed at `at`; recording over a part also takes out `replaces` while the insert is there, so removing it brings the part back.
+Inserts are kept whole: trims, cuts, pauses and speed-ups apply only to the original recording.
+Each insert has an `id`, so it can be moved (`withMovedInsert()`) or removed; `insertSpan()` says where it plays in the edited story, for the editor's "Listen" around it.
 Nothing is processed until the preview plays or the story is saved, so every change is free to undo.
 - `findPauses()` finds quiet stretches of 1.5 seconds or more, with a threshold computed from the recording itself.
 Shortening keeps half a second of each.
-- `planSegments()` turns the edit into the kept parts and their playback rates.
+- `planSegments()` turns the edit into the pieces to play in order: the kept parts with their playback rates, and the inserts where they go (an insert outside the trimmed ends goes at that end).
 `plannedLength()` gives the new length instantly, without rendering.
 - `render()` cuts and joins the parts with 10 ms fades and time-stretches sped-up parts with SoundTouch (`soundtouchjs`, pitch kept).
 `encodeMp3()` encodes with LAME (`wasm-media-encoders`) at 64 kbps.

@@ -51,7 +51,6 @@ On iPhone, web push only works for a web app added to the Home Screen.
 
 - Instructions screen for playing (slide 23).
 - Editing a saved story's title, storyteller and relationship (the rules currently allow only `setNumber` to change).
-- Adding new audio into a story (slide 11, "add segments").
 - Automatic regrouping into sets that fit 9:00 to 11:00 (slides 19 and 21): a small partitioning problem, best offered as a suggestion the family confirms.
 - The post-treatment survey and researcher data review (slide 2), once the client describes them.
 - The happy set range question (9:45 to 10:15 or 9:00 to 11:00).

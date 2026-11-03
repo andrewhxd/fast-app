@@ -82,7 +82,7 @@ When the set has less than 5:00 of room, a "Set full" marker shows where the set
 "Finish" is disabled for the first second, so a double tap on Start can't end the recording.
 - **When a story runs long** (slides 15 and 16): over 5:00, or too long for its set, the app shows the time left in the set and offers **Edit to fit** (recommended, keeps everything said) or **Record it again** (keeps the name recording).
 - **A simple editor, not a Voice Memos copy**: the doc points to the iPhone Voice Memos editor, but families only need to get under a limit.
-So there are three tools: shorten long pauses (one switch), trim the start and end, and speed up (1.1× or 1.2×, voice keeps its pitch) or cut a part.
+So there are four tools: shorten long pauses (one switch), trim the start and end, speed up (1.1× or 1.2×, voice keeps its pitch) or cut a part, and add a part or record over one (slide 11, "add segments": tap a spot to add, or drag across a part to replace it, like Voice Memos' Replace).
 A readout always shows the length before and after, and whether it fits.
 - **Rearrange keeps the affect** (slide 19): stories move only between sets of the same affect.
 Tap a story, then "Move here" or another story to swap with.

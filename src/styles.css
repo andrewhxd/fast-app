@@ -1418,6 +1418,87 @@ button:disabled {
   pointer-events: none;
 }
 
+/* Where a new part was added (insert-mark), or where one will go (spot-mark). */
+.insert-mark,
+.spot-mark {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--record);
+  pointer-events: none;
+}
+
+.insert-mark::before,
+.spot-mark::before {
+  content: '';
+  position: absolute;
+  top: -0.25rem;
+  left: 50%;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background-color: inherit;
+  transform: translateX(-50%);
+}
+
+.spot-mark {
+  background-color: var(--primary);
+}
+
+/* The added part being moved: a bigger mark, or for a part recorded over, a box with grab edges. */
+.insert-mark.moving {
+  width: 5px;
+  margin-left: -2.5px;
+}
+
+.insert-mark.moving::before {
+  width: 1rem;
+  height: 1rem;
+  top: -0.5rem;
+}
+
+.insert-box {
+  position: absolute;
+  top: -0.375rem;
+  bottom: -0.375rem;
+  border-radius: 0.75rem;
+  border-inline: 6px solid var(--record);
+  background-color: color-mix(in srgb, var(--record) 14%, transparent);
+  pointer-events: none;
+}
+
+.insert-mark:focus-visible,
+.insert-box:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.move-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.move-actions .pill {
+  min-height: 3rem;
+  font-size: 1rem;
+}
+
+.added-row {
+  padding-right: 0.75rem;
+}
+
+.added-row .action {
+  padding: 0 1rem;
+}
+
+.added-row.selected {
+  background-color: var(--primary-soft);
+}
+
 .ruler {
   display: flex;
   justify-content: space-between;
