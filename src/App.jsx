@@ -76,7 +76,7 @@ function firstScreen() {
 const MENU = [
   { label: 'Home', screen: HOME, icon: <HomeIcon /> },
   { label: 'Record a Story', screen: SETS_SCREEN, icon: <MicIcon /> },
-  { label: 'Listen to Stories', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
+  { label: 'Listen and Edit Stories', sidebarLabel: 'Listen', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
   { label: 'Care team', screen: TEAM_SCREEN, icon: <PeopleIcon /> },
 ];
 
