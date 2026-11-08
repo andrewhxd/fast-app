@@ -103,6 +103,7 @@ To add or change a story field:
 ## Recording (`src/RecordStory.jsx`, `src/useRecorder.js`, `src/LiveWaveform.jsx`)
 
 - `RecordStory` is a small state machine over `step`: `name` → `story` → `review`, with `tooLong` or `overSet` when the story doesn't fit, and `edit` for the editor.
+When a set has at most 5:00 of room, `recordingSetProgress()` calculates the 9:00 and 11:00 markers and remaining times from the saved set and the unsaved recording, including its name.
 The step number shown (1 to 3) is derived from it.
 - On review, changing the affect selects the accepting set with the most room that fits the whole recording, with set 1 breaking ties.
 Returning to the starting affect selects the original set; ready sets do not accept new recordings.

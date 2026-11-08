@@ -1,6 +1,6 @@
 import LiveWaveform from './LiveWaveform.jsx';
 import { PauseIcon, PlayIcon, StopIcon } from './icons.jsx';
-import { STORY_MAX, STORY_WARN, formatTime } from './stories.js';
+import { STORY_MAX, STORY_WARN, formatTime, recordingSetProgress } from './stories.js';
 
 // The recorder's card and buttons, used to record a story (RecordStory) and to add a part to one
 // (StoryEditor).
@@ -10,7 +10,7 @@ const WARN_BEFORE_LIMIT = STORY_MAX - STORY_WARN; // the bar turns yellow this l
 
 // The recorder card: status, the big timer, the live waveform, and for the story a bar toward its
 // limit. `length` is the story so far with its name clip, since the 5:00 cap counts the name.
-// `room` is how much the set can still take; when it's under 5:00 the bar marks where the set is full.
+// `room` is how much the set can still take before this recording.
 export function RecorderCard({ tint, recorder, length, story, room }) {
   const { state } = recorder;
   const limit = Math.min(STORY_MAX, room);
@@ -18,10 +18,12 @@ export function RecorderCard({ tint, recorder, length, story, room }) {
   if (length > limit) level = 'long';
   else if (length >= limit - WARN_BEFORE_LIMIT) level = 'warn';
 
-  let hint;
-  if (room < STORY_MAX) hint = length <= room ? `${formatTime(room - length)} until this set is full` : 'This set is full. Finish now.';
-  else if (length > STORY_MAX) hint = `Over ${formatTime(STORY_MAX)}`;
-  else hint = `${formatTime(STORY_MAX - length)} left${level === 'warn' ? '. Start wrapping up.' : ''}`;
+  const hint = length > STORY_MAX ? `Over ${formatTime(STORY_MAX)}`
+    : `${formatTime(STORY_MAX - length)} left${level === 'warn' ? '. Start wrapping up.' : ''}`;
+  const progress = story ? recordingSetProgress(room, length) : null;
+  const remaining = (ms) => formatTime(Math.ceil(ms / 1000) * 1000);
+  const minimumPosition = progress ? `${(progress.minimum / STORY_MAX) * 100}%` : '0%';
+  const maximumPosition = progress ? `${(progress.maximum / STORY_MAX) * 100}%` : '0%';
 
   return (
     <section className={`card recorder ${tint}`}>
@@ -37,15 +39,25 @@ export function RecorderCard({ tint, recorder, length, story, room }) {
       <div className="waveform-slot">{state === 'recording' && <LiveWaveform stream={recorder.stream} />}</div>
       {story && (
         <div className="limit-bar">
+          {progress.show && <div className="bar-labels marker-labels">
+            <span className="marker-label" style={{ '--marker-position': minimumPosition }}>Min</span>
+            <span className="marker-label" style={{ '--marker-position': maximumPosition }}>Max</span>
+          </div>}
           <div className="bar bar-thick">
             <div className={`bar-fill ${level}`} style={{ width: `${Math.min(length / STORY_MAX, 1) * 100}%` }} />
-            {room < STORY_MAX && <div className="bar-marker" style={{ left: `${(room / STORY_MAX) * 100}%` }} />}
+            {progress.show && <>
+              <div className="bar-marker" style={{ left: minimumPosition }} />
+              <div className="bar-marker" style={{ left: maximumPosition }} />
+            </>}
           </div>
           <div className="bar-labels">
-            {room < STORY_MAX && <span className="marker-label" style={{ left: `${(room / STORY_MAX) * 100}%` }}>Set full</span>}
             <span className="end-label">{formatTime(STORY_MAX)}</span>
           </div>
-          <p className="timer-hint">{hint}</p>
+          {(!progress.show || length > STORY_MAX) && <p className="timer-hint">{hint}</p>}
+          {progress.show && <div className="recording-set-progress">
+            <div className="recording-set-row"><span>Until minimum (9:00)</span><strong>{progress.toMinimum > 0 ? remaining(progress.toMinimum) : 'Reached'}</strong></div>
+            <div className="recording-set-row"><span>Until maximum (11:00)</span><strong>{progress.overMaximum ? 'Set full. Finish now.' : remaining(progress.toMaximum)}</strong></div>
+          </div>}
         </div>
       )}
     </section>

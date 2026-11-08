@@ -104,7 +104,7 @@ npm run dev:remote   # http://localhost:5173, against the dev Firebase project
 npm run build        # production build into dist/, for the live project
 npm run deploy:dev   # build for the dev project and deploy it to https://fast-app-cs499-dev.web.app
 npm run deploy:branch # build for the dev project and deploy it to a 7-day preview address named after the branch
-npm run test:unit    # the story editor's plan (tests/audioEdit.test.js)
+npm run test:unit    # the story editor's plan and recording set progress
 npm run test:rules   # the security rules tests (tests/rules.test.js), against the Firestore emulator
 ```
 
@@ -117,7 +117,7 @@ The seed writes through the security rules, the way the app does, so a data mode
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
-The security rules have tests (`npm run test:rules`), and so does the story editor's plan (`npm run test:unit`); there is no linter yet.
+The security rules have tests (`npm run test:rules`), as do the story editor's plan and recording set progress (`npm run test:unit`); there is no linter yet.
 Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
@@ -169,7 +169,7 @@ A guide to recording opens over the screen the first time on each device, and fr
   1. Record the storyteller saying the patient's name 3 times.
   2. Record the story.
 The timer continues from the name clip, so it shows the whole story's length toward 5:00, and turns yellow at 4:30.
-When the set has less than 5:00 of room left, the bar marks where the set is full and says how long until then.
+When the set has 5:00 or less of room left, the bar marks the 9:00 minimum and 11:00 maximum and shows the time remaining to each.
 Finish waits a second after starting, so a double tap can't end the recording.
   3. Listen back, enter the title, storyteller, relationship and affect, then **Add story** or **Delete recording**.
 An **Edit** button opens the story editor.
