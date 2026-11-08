@@ -13,7 +13,7 @@ export const SETS = [
   { affect: 'challenging', setNumber: 2 },
 ];
 
-export const RELATIONSHIPS = ['Mother', 'Father', 'Sister', 'Brother', 'Aunt', 'Uncle', 'Cousin', 'Friend'];
+export const RELATIONSHIPS = ['Mother', 'Father', 'Sibling', 'Partner', 'Spouse', 'Child', 'Aunt', 'Uncle', 'Cousin', 'Friend'];
 
 const MINUTE = 60_000; // ms
 export const SET_MIN = 9 * MINUTE;

@@ -75,6 +75,7 @@ The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one settin
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
 Home already says so.
 - **Recording in 3 steps**: say the name 3 times, tell the story, add details (title, storyteller, relationship, happy or challenging).
+The relationship list includes an Other option with a text field for relationships not listed.
 A five-card guide shows the selected set, microphone access and the recording steps, with iPhone and Android microphone permission screenshots.
 It's a dialog over the record screen, not a screen of its own, so it never stands between someone and the Start button.
 It opens by itself the first time someone records on that device; after that, the info button in the top right corner opens it at the card for the current step.

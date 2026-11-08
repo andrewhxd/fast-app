@@ -48,7 +48,7 @@ rules_version = '2';
 // Fields (all required at create, no others):
 //   - title: string (1-100 chars) - e.g. "Heather and Dave's wedding"
 //   - storyteller: string (1-100 chars) - the family member telling the story
-//   - relationship: string, one of Mother, Father, Sister, Brother, Aunt, Uncle, Cousin, Friend
+//   - relationship: nonempty string, up to 100 characters (including custom and older values)
 //   - affect: string, "happy" or "challenging"
 //   - setNumber: int (1 or 2) - which of the two sets with this affect; the only field that can
 //     change after create (moving a story to the other set with the same affect)
@@ -233,7 +233,8 @@ service cloud.firestore {
       return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
         && isStringOfLength(data.title, 1, 100)
         && isStringOfLength(data.storyteller, 1, 100)
-        && data.relationship in ['Mother', 'Father', 'Sister', 'Brother', 'Aunt', 'Uncle', 'Cousin', 'Friend']
+        && isStringOfLength(data.relationship, 1, 100)
+        && data.relationship.matches('.*[^\\s].*')
         && data.affect in ['happy', 'challenging']
         && isIntInRange(data.setNumber, 1, 2)
         && isValidGroupId(data.group)

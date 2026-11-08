@@ -36,6 +36,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   const [title, setTitle] = useState('');
   const [storyteller, setStoryteller] = useState('');
   const [relationship, setRelationship] = useState('');
+  const [otherRelationship, setOtherRelationship] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -108,7 +109,8 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
 
   async function save() {
     if (!fits) return;
-    if (!title.trim() || !storyteller.trim() || !relationship) {
+    const relationshipToSave = relationship === 'Other' ? otherRelationship.trim() : relationship;
+    if (!title.trim() || !storyteller.trim() || !relationshipToSave) {
       setError('Fill in the title, storyteller and relationship first.');
       return;
     }
@@ -121,7 +123,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         story: storyTake,
         title: title.trim(),
         storyteller: storyteller.trim(),
-        relationship,
+        relationship: relationshipToSave,
         affect,
         setNumber: targetNumber,
       });
@@ -289,8 +291,15 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
               <select id="relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)} required>
                 <option value="" disabled>Choose one</option>
                 {RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value="Other">Other</option>
               </select>
             </div>
+            {relationship === 'Other' && (
+              <div className="field">
+                <label className="field-label" htmlFor="other-relationship">Your relationship to the patient</label>
+                <input id="other-relationship" value={otherRelationship} onChange={(event) => setOtherRelationship(event.target.value)} maxLength={100} placeholder="Enter your relationship" />
+              </div>
+            )}
             <fieldset className="field">
               <legend className="field-label">Affect of the event</legend>
               <div className="segmented">
