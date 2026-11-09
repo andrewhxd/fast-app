@@ -86,8 +86,8 @@ Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and del
 The edited story gets a new id and a new `createdAt`, so it moves to the end of its set's list.
 - **Durations are measured, not read from the file.** Some browsers (Chrome's WebM) write recordings without a readable length, so `useRecorder` times the recording itself and the durations are stored in milliseconds as integers.
 Never take a length from an `<audio>` element.
-- **Sessions are saved once and never change.** Each play of a set is a document in `groups/{groupId}/sessions`, written by the member who played it, with the checklist answers checked against fixed lists.
-The rules allow no update or delete, so the history of what was played can't be rewritten.
+- **Sessions are saved once, then only marked as ended.** Each play of a set is a document in `groups/{groupId}/sessions`, written by the member who played it, with the checklist answers checked against fixed lists.
+The only update the rules allow is its player adding `endedAt` (server time) once, and nobody can delete one, so the history of what was played can't be rewritten.
 A group's `hearingAid` can be added once by any member and never changed.
 - **The limits live in two places.** `src/stories.js` (`STORY_MAX`, `NAME_MAX`, `SET_MIN`, `SET_MAX`) and `firestore.rules` (the 5:00 and 1:00 limits, 5 chunks, 5 MB).
 Change both together.
@@ -136,6 +136,8 @@ When seeking to another clip, the player waits for its metadata before applying 
 - `day` is the date on the playing device's calendar (`localDay()`), so a set isn't repeated on the same day.
 - The session is saved the first time Play is tapped (`ClipPlayer`'s `onPlay`), with the checklist keys (`PREPARE`) and the signs of being awake (`AWAKE`).
 Canceling before that saves nothing. If saving fails, the set keeps playing and an error says so.
+- When the last story finishes (`ClipPlayer`'s `onEnd`), the session gets `endedAt` (`markSessionEnded()`), so a set stopped partway has none.
+Dragging the progress bar to the end counts as finishing too.
 - The sound check is a chime made in the browser (`chimeWav()` in `src/chime.js`): four rising bell notes, about 3 seconds, normalized to about a voice recording's loudness, so the volume set with it suits the stories.
 - The hearing aid question shows until a care team has answered it, then the checklist adds "hearing aid in place" for a patient who uses one.
 The eligibility survey is meant to ask it, once it's built.

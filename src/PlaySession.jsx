@@ -5,7 +5,7 @@ import NavBar from './NavBar.jsx';
 import { setHearingAid } from './group.js';
 import { CheckIcon } from './icons.jsx';
 import { AWAKE, localDay, pickSet, playableSets, prepareItems, shuffled } from './playing.js';
-import { listSessionsOn, saveSession } from './sessions.js';
+import { listSessionsOn, markSessionEnded, saveSession } from './sessions.js';
 import { loadStoryAudio, splitClips } from './storage.js';
 import { setKey, setName, storiesInSet } from './stories.js';
 
@@ -14,7 +14,7 @@ import { setKey, setName, storiesInSet } from './stories.js';
 //   2. "Is Sam awake?": which signs of being awake the patient shows. With none, it suggests waiting,
 //      but they can still play.
 //   3. The set plays: one picked at random from the sets not yet played today, its stories shuffled.
-// The session is saved when the set starts playing.
+// The session is saved when the set starts playing, and marked as ended if it plays to the end.
 // `group` is the current care team; `onHearingAid(answer)` updates it once the hearing aid question
 // is answered. `onDone(message)` and `onCancel()` leave the screen.
 export default function PlaySession({ group, stories, onHearingAid, onDone, onCancel }) {
@@ -28,7 +28,7 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
   const [notAwake, setNotAwake] = useState(false); // asking whether to play with no signs of being awake
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const saved = useRef(false);
+  const saved = useRef(null); // the session being saved: a promise of its id
 
   // Pick today's set and start loading its audio, so it's ready by the time the checklist is done.
   useEffect(() => {
@@ -99,16 +99,24 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
   // Saved once, the first time Play is tapped. Playing carries on if it can't be saved.
   function saveOnce() {
     if (saved.current) return;
-    saved.current = true;
-    saveSession(group.id, {
+    saved.current = saveSession(group.id, {
       affect: plan.affect,
       setNumber: plan.setNumber,
       day: plan.day,
       prepared: items.map((item) => item.key),
       awake: AWAKE.map((sign) => sign.key).filter((key) => awake.includes(key)),
-    }).catch((err) => {
-      saved.current = false;
+    });
+    saved.current.catch((err) => {
+      saved.current = null;
       setError(`Could not save this session: ${err.message}. The set keeps playing.`);
+    });
+  }
+
+  // The set played to the end: say so, and record it on the session once it's saved.
+  function finish() {
+    setStep('done');
+    saved.current?.then((id) => markSessionEnded(group.id, id)).catch((err) => {
+      setError(`Could not record that the set finished: ${err.message}`);
     });
   }
 
@@ -234,7 +242,7 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
                 clips={clips}
                 idleLabel={clips ? (plan.stories.length === 1 ? '1 story' : `${plan.stories.length} stories, in random order`) : 'Loading...'}
                 onPlay={saveOnce}
-                onEnd={() => setStep('done')}
+                onEnd={finish}
                 showLeft
               />
             </section>

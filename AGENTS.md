@@ -198,7 +198,7 @@ Continue stays greyed out until every item is ticked.
   2. **Is Sam awake?**: tick the signs of being awake.
 With none, the app suggests waiting an hour or gently waking them, and offers **Play anyway** or **Not now**.
   3. **Playing**: a random set not yet played today, its stories shuffled, with the time left.
-The session is saved when Play is first tapped, and the set ends with "Take the earbuds out".
+The session is saved when Play is first tapped and marked as ended if the set plays to the end, which ends with "Take the earbuds out".
 Once every set with stories has played that day, Play says the next session is tomorrow.
 - The phone's back button moves between screens.
 
@@ -260,7 +260,8 @@ groups/{groupId}                         id, name (the patient's), ownerId (the 
 groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
 groups/{groupId}/sessions/{id}           playedBy, affect, setNumber, day ("YYYY-MM-DD"), startedAt,
-                                         prepared (checklist keys), awake (signs of being awake)
+                                         prepared (checklist keys), awake (signs of being awake),
+                                         endedAt (once the set has played to the end)
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt, and once deleted: deletedAt,
@@ -290,7 +291,7 @@ Only a group's members can read the group, its members and its stories, and save
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
 Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
-Members save a session for each set they play, once; sessions can't be changed or deleted, and their checklist answers must come from fixed lists.
+Members save a session for each set they play, once, and the player adds `endedAt` when it plays to the end; nothing else about a session changes, nobody can delete one, and its checklist answers must come from fixed lists.
 Any member can answer the hearing aid question once (`hearingAid` on the group); it can't change after that.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
 The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).

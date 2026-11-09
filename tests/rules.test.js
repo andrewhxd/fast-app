@@ -343,9 +343,24 @@ describe('playing sessions', () => {
     await saved();
     await assertFails(getDocs(query(collection(as(MIA), 'groups/sam/sessions'), where('day', '==', '2026-11-09'))));
   });
-  test('a session never changes', async () => {
+  test('nothing else about a session changes, and nobody deletes one', async () => {
     await saved();
     await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { awake: [] }));
+    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp(), awake: [] }));
     await assertFails(deleteDoc(doc(as(JEFF), 'groups/sam/sessions/old')));
   });
+  test('the player marks it played to the end, once', async () => {
+    await saved();
+    await assertSucceeds(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
+  });
+  test('only the player marks it ended', async () => {
+    await saved();
+    await assertFails(updateDoc(doc(as(ANN), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
+  });
+  test('it ends now', async () => {
+    await saved();
+    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: new Date('2026-01-01') }));
+  });
+  test('a new session has not ended yet', () => assertFails(save(JEFF, { endedAt: serverTimestamp() })));
 });

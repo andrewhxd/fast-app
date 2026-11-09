@@ -47,7 +47,7 @@ rules_version = '2';
 // Subcollection: groups/{groupId}/sessions/{sessionId}
 // Document ID: auto-generated
 // One for each time a story set was played to the patient.
-// Fields (all required, no others, never change):
+// Fields (all required at create, no others):
 //   - playedBy: string - the uid of the member who played it
 //   - affect: string, "happy" or "challenging", and setNumber: int (1 or 2) - the set played
 //   - day: string ("YYYY-MM-DD") - the day it counts toward, on the player's calendar
@@ -57,7 +57,10 @@ rules_version = '2';
 //   - awake: list (possibly empty) of the signs of being awake the patient showed: "eyesOpen",
 //     "eyesToArousal", "followsInstruction", "intentionalMovement", "turnsToSound", "makesSounds"
 //     and "respondsToTouch"
-// Members can read a group's sessions and save their own. Nobody can change or delete one.
+// Field added later, once:
+//   - endedAt: timestamp - server time when the set played to the end; absent if it was stopped
+// Members can read a group's sessions and save their own. The member who played one adds endedAt;
+// nothing else changes, and nobody can delete one.
 //
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
@@ -98,7 +101,8 @@ rules_version = '2';
 // The app saves a story and all its chunks in one batch, and removes them for good in one batch.
 // It lists a group's stories with where('group', '==', groupId), reads chunks by ID, moves a
 // story by updating only its setNumber, and deletes or restores one by updating it.
-// It lists a day's sessions with where('day', '==', day), and saves one with a single add.
+// It lists a day's sessions with where('day', '==', day), saves one with a single add, and adds
+// endedAt with a single update.
 //
 // ===============================================================
 
@@ -342,6 +346,14 @@ service cloud.firestore {
                                'turnsToSound', 'makesSounds', 'respondsToTouch']);
     }
 
+    // The set played to the end: its player adds endedAt, now, once, and nothing else changes.
+    function isEndingSession() {
+      return resource.data.playedBy == request.auth.uid
+        && !('endedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['endedAt'])
+        && request.resource.data.endedAt == request.time;
+    }
+
     function isValidStoryChunk(treatmentId, storyId, chunkId, data) {
       return data.keys().hasAll(['data']) && data.keys().hasOnly(['data'])
         && data.data is bytes && data.data.size() >= 1 && data.data.size() <= 1000000
@@ -389,7 +401,8 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read: if isMember(groupId);
         allow create: if isMember(groupId) && isValidSession(request.resource.data);
-        allow update, delete: if false;
+        allow update: if isMember(groupId) && isEndingSession();
+        allow delete: if false;
       }
     }
 
