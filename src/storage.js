@@ -1,16 +1,18 @@
 import {
-  Bytes, collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch,
+  Bytes, collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore/lite';
 import { createAudioCache } from './audioCache.js';
-import { db } from './firebase.js';
+import { auth, db } from './firebase.js';
 import { isValidGroupId } from './group.js';
+import { isPastRecovery } from './stories.js';
 
 // Stories are stored in Cloud Firestore. The project is on the free Spark plan,
 // which has no Cloud Storage bucket, so the audio itself goes into Firestore too:
 //
 //   treatments/demo/stories/{id}            title, storyteller, relationship, affect, setNumber,
 //                                           group, nameDuration, storyDuration, type, nameSize,
-//                                           size, chunkCount, createdAt
+//                                           size, chunkCount, createdAt, and once deleted:
+//                                           deletedAt, deletedBy, replacedBy (after an edit)
 //   treatments/demo/stories/{id}/chunks/{i} data: up to 1 MB of the audio (documents max out at 1 MiB)
 //
 // The audio is the name clip's bytes followed by the story clip's bytes; nameSize says where to split them.
@@ -58,8 +60,14 @@ async function queueStory(batch, details, name, story) {
   return { storyRef, audio: new Blob([bytes], { type: name.blob.type }) };
 }
 
-// Queue the deletion of a story and all of its audio chunks into `batch`.
-function queueDelete(batch, story) {
+// The fields that mark a story as deleted, by the signed-in person, now.
+function deletedNow() {
+  return { deletedAt: serverTimestamp(), deletedBy: auth.currentUser.uid };
+}
+
+// Queue removing a story and all of its audio chunks for good into `batch`.
+// The rules allow it only once the story has been deleted for the whole recovery period.
+function queueRemove(batch, story) {
   const storyRef = doc(storiesRef, story.id);
   for (let i = 0; i < story.chunkCount; i++) batch.delete(doc(storyRef, 'chunks', String(i)));
   batch.delete(storyRef);
@@ -84,8 +92,9 @@ function assertStoryGroup(story, groupId) {
 }
 
 // Replace a saved story's audio with an edited version, keeping its title and other details.
-// Saved stories never change, so the story is saved again under a new id and the old one deleted,
-// in one batch: either both happen or neither does. Returns the new id.
+// A saved story's audio never changes, so the story is saved again under a new id and the old one
+// deleted (marked with replacedBy, so it can be restored as "Before an edit"), in one batch:
+// either both happen or neither does. Returns the new id.
 export async function replaceStoryAudio(old, { name, story }, groupId) {
   assertStoryGroup(old, groupId);
   const details = {
@@ -98,9 +107,8 @@ export async function replaceStoryAudio(old, { name, story }, groupId) {
   };
   const batch = writeBatch(db);
   const { storyRef, audio } = await queueStory(batch, details, name, story);
-  queueDelete(batch, old);
+  batch.update(doc(storiesRef, old.id), { ...deletedNow(), replacedBy: storyRef.id });
   await batch.commit();
-  audioCache.remove(old.id);
   audioCache.add(storyRef.id, audio);
   return storyRef.id;
 }
@@ -155,11 +163,34 @@ export function swapStories(a, b, groupId) {
   return batch.commit();
 }
 
-// Delete a story and all of its audio together.
-export async function deleteStory(story, groupId) {
+// Delete a story: it leaves its set right away, but it's only marked as deleted, so it can be
+// restored for RECOVERY_DAYS days (see removeExpiredStories()).
+export function deleteStory(story, groupId) {
   assertStoryGroup(story, groupId);
-  const batch = writeBatch(db);
-  queueDelete(batch, story);
-  await batch.commit();
-  audioCache.remove(story.id);
+  return updateDoc(doc(storiesRef, story.id), deletedNow());
+}
+
+// Put a deleted story back, in `setNumber` (either set of its affect).
+export function restoreStory(story, setNumber, groupId) {
+  assertStoryGroup(story, groupId);
+  return updateDoc(doc(storiesRef, story.id), {
+    deletedAt: deleteField(), deletedBy: deleteField(), replacedBy: deleteField(), setNumber,
+  });
+}
+
+// Remove deleted stories whose recovery period is over, with their audio, for good.
+// The free plan can't run scheduled jobs, so this runs whenever a member loads the stories.
+// A failure is left for next time: another member may have just removed it, or this device's
+// clock may be ahead of the server's.
+export async function removeExpiredStories(stories) {
+  for (const story of stories.filter((s) => isPastRecovery(s))) {
+    const batch = writeBatch(db);
+    queueRemove(batch, story);
+    try {
+      await batch.commit();
+      audioCache.remove(story.id);
+    } catch {
+      // Try again next time.
+    }
+  }
 }

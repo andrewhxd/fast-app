@@ -10,7 +10,7 @@ export default function Sidebar({ items, current, locked, onGo, groupName, accou
       </span>
       <p className="sidebar-tagline">Familiar Auditory Sensory Training</p>
       <nav className="side-nav" aria-label="Main">
-        {items.map(({ label, screen, icon }) => (
+        {items.map(({ label, sidebarLabel, screen, icon }) => (
           <button
             key={label}
             className={screen.name === current ? 'current' : ''}
@@ -19,7 +19,7 @@ export default function Sidebar({ items, current, locked, onGo, groupName, accou
             onClick={() => onGo(screen)}
           >
             {icon}
-            {label}
+            {sidebarLabel ?? label}
           </button>
         ))}
       </nav>

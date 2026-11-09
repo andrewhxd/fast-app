@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import NavBar from './NavBar.jsx';
 import { wakeAudio } from './LiveWaveform.jsx';
-import { BackIcon, ChevronIcon, PlayIcon, StopIcon } from './icons.jsx';
+import { RecordButtons, RecorderCard } from './RecorderControls.jsx';
+import { BackIcon, ChevronIcon, PauseIcon, PlayIcon, StopIcon } from './icons.jsx';
 import {
   SAMPLE_RATE, decodeClip, encodeMp3, findPauses, isEdited, lengthOf, noEdits, pauseSavings, peaks, planSegments,
-  plannedLength, render, withCut, withSpeedup,
+  insertSpan, plannedLength, render, withCut, withInsert, withMovedInsert, withSpeedup, withoutInsert,
 } from './audioEdit.js';
 import { formatTime } from './stories.js';
+import { useRecorder } from './useRecorder.js';
 
 const BARS = 64;
 const MIN_KEEP = 1; // the trim handles keep at least this much (seconds)
-const HANDLE_REACH = 28; // how close a touch must be to grab a trim handle (px)
+const HANDLE_REACH = 28; // how close a touch must be to grab a trim handle or an added part (px)
+const MIN_PART = 0.5; // a part recorded over is at least this long (seconds)
+const AROUND = 3; // "Listen around it" plays this much before and after an added part (seconds)
 const RATES = [
   { rate: 1, label: 'Normal' },
   { rate: 1.1, label: '1.1×' },
@@ -47,8 +51,8 @@ function LengthCard({ before, after, maxLength, limitText }) {
   );
 }
 
-// The story editor: trim the ends, shorten long pauses, and speed up or cut a part, with a live
-// length readout and a preview. `name` and `story` are the recorded clips ({ blob, duration }).
+// The story editor: trim the ends, shorten long pauses, speed up or cut a part, and add a new part
+// or record over one, with a live length readout and a preview. `name` and `story` are the recorded clips ({ blob, duration }).
 // The name clip isn't edited, but it counts toward `maxLength` (ms): the most the story may be.
 // `limitText` explains that limit. onSave({ name, story }) gets both clips as MP3, because a story's
 // two clips are stored in one format; it can return a promise while it saves them.
@@ -57,16 +61,26 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const [nameSamples, setNameSamples] = useState(null);
   const [pauses, setPauses] = useState([]);
   const [edits, setEdits] = useState(null);
-  const [mode, setMode] = useState('main'); // 'main', or 'part' while speeding up or cutting a part
-  const [selection, setSelection] = useState(null); // { start, end } of the part, in seconds
+  // 'main'; 'part' while speeding up or cutting a part; 'add' while adding a part or recording over one
+  const [mode, setMode] = useState('main');
+  // { start, end } of the picked part, in seconds. In 'add', start === end is a spot to add at.
+  const [selection, setSelection] = useState(null);
+  const recorder = useRecorder();
+  const [adding, setAdding] = useState(false); // decoding a new recording
+  const [movingId, setMovingId] = useState(null); // the added part being moved, in 'add'
   const [rate, setRate] = useState(1.1);
-  const [preview, setPreview] = useState(null); // { loading } or { position } while the preview plays
+  // A preview can be preparing or playing; `around` is the added part it plays around, if any.
+  const [preview, setPreview] = useState(null);
+  const [position, setPosition] = useState(0); // edited story playback position, in milliseconds
+  const [previewDuration, setPreviewDuration] = useState(null); // actual rendered duration, in milliseconds
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const waveRef = useRef(null);
   const dragRef = useRef(null); // 'start' or 'end' handle, or { anchor } of a selection
+  const trimTouchRef = useRef(null); // distinguish a nearby tap from dragging a trim handle
   const playerRef = useRef(null); // the playing preview: { source, startedAt, frame }
   const pendingRef = useRef(null); // the preview being prepared, if any
+  const renderedRef = useRef(null); // rendered buffer for the current edit plan
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +102,12 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }, [name, story]);
 
   // Any change to the edit stops the preview, which would no longer match.
-  useEffect(() => () => stopPreview(), [edits]);
+  useEffect(() => {
+    setPosition(0);
+    setPreviewDuration(null);
+    renderedRef.current = null;
+    return () => stopPreview();
+  }, [edits]);
 
   const length = samples ? lengthOf(samples) : 0;
   const segments = useMemo(() => edits && planSegments(edits, pauses), [edits, pauses]);
@@ -115,34 +134,100 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
     setPreview(null);
   }
 
-  async function togglePreview() {
+  function togglePreview() {
     if (preview) {
+      const player = playerRef.current;
+      if (player && player.around === null) setPosition(Math.min(player.duration, (player.from + player.context.currentTime - player.startedAt) * 1000));
       stopPreview();
-      return;
+    } else {
+      startPreview(null, position >= playbackDuration ? 0 : position);
     }
+  }
+
+  // Play the edited story, or with `around` (an added part's id), just a few seconds either side of it.
+  async function startPreview(around = null, positionMs = 0) {
     const context = wakeAudio(); // during the tap, so the phone lets it play
+    stopPreview();
     const pending = {};
     pendingRef.current = pending;
-    setPreview({ loading: true });
-    const out = await render(samples, segments);
+    setPreview({ loading: true, around });
+    setError('');
+    let from = positionMs / 1000;
+    let playFor;
+    if (around !== null) {
+      const span = insertSpan(segments, around);
+      from = Math.max(0, span.start - AROUND);
+      playFor = span.start - from + span.length + AROUND;
+    }
+    let buffer;
+    try {
+      if (renderedRef.current?.segments === segments) buffer = await renderedRef.current.buffer;
+      else {
+        const bufferPromise = render(samples, segments).then((out) => {
+          if (!out.length) throw new Error('The edited story is empty.');
+          const result = context.createBuffer(1, out.length, SAMPLE_RATE);
+          result.copyToChannel(out, 0);
+          return result;
+        });
+        renderedRef.current = { segments, buffer: bufferPromise };
+        buffer = await bufferPromise;
+      }
+    } catch (err) {
+      if (pendingRef.current === pending) {
+        renderedRef.current = null;
+        pendingRef.current = null;
+        setPreview(null);
+        setError(`Could not play the story: ${err.message}`);
+      }
+      return;
+    }
     if (pendingRef.current !== pending) return; // stopped, edited or closed meanwhile
     pendingRef.current = null;
-    const buffer = context.createBuffer(1, out.length, SAMPLE_RATE);
-    buffer.copyToChannel(out, 0);
+    const duration = buffer.duration * 1000;
+    setPreviewDuration(duration);
+    from = clamp(from, 0, buffer.duration);
+    if (from >= buffer.duration) {
+      if (around === null) setPosition(duration);
+      setPreview(null);
+      return;
+    }
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
-    const player = { source, startedAt: context.currentTime, frame: 0 };
+    const player = { source, context, from, duration, around, startedAt: context.currentTime, frame: 0 };
     source.onended = () => {
-      if (playerRef.current === player) stopPreview();
+      if (playerRef.current === player) {
+        if (around === null) setPosition(duration);
+        stopPreview();
+      }
     };
     playerRef.current = player;
-    source.start();
+    source.start(0, from, playFor);
+    setPreview({ loading: false, around });
     const tick = () => {
-      setPreview({ position: (context.currentTime - player.startedAt) * 1000 });
+      if (around === null) setPosition(Math.min(duration, (from + context.currentTime - player.startedAt) * 1000));
       player.frame = requestAnimationFrame(tick);
     };
     tick();
+  }
+
+  function seekPreview(next) {
+    const positionMs = clamp(next, 0, playbackDuration);
+    const wasPlaying = Boolean(preview && preview.around === null);
+    stopPreview();
+    setPosition(positionMs);
+    if (wasPlaying && positionMs < playbackDuration) startPreview(null, positionMs);
+  }
+
+  function seekKey(event) {
+    const step = event.shiftKey ? 5000 : 1000;
+    const delta = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step }[event.key];
+    if (delta !== undefined) seekPreview(position + delta);
+    else if (event.key === 'Home') seekPreview(0);
+    else if (event.key === 'End') seekPreview(playbackDuration);
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // ---------- Dragging on the waveform ----------
@@ -158,17 +243,66 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       : { ...e, trimEnd: clamp(time, e.trimStart + MIN_KEEP, length) }));
   }
 
+  // The added part under a touch at `time`, and which part of it: a part recorded over can be moved
+  // ('move') or resized ('start', 'end'); one added at a spot is moved by its mark ('at').
+  // The part already being moved comes first.
+  function grabInsert(time) {
+    const width = waveRef.current.getBoundingClientRect().width;
+    const pixels = (seconds) => Math.abs(seconds) / length * width;
+    const inserts = [...edits.inserts].sort((a, b) => (b.id === movingId) - (a.id === movingId));
+    for (const insert of inserts) {
+      if (insert.replaces) {
+        const { start, end } = insert.replaces;
+        const inside = time > start && time < end;
+        // Inside a narrow box, the edges' reach shrinks, so its middle still moves it.
+        const reach = inside ? Math.min(HANDLE_REACH, pixels(end - start) / 4) : HANDLE_REACH;
+        const toStart = pixels(time - start);
+        const toEnd = pixels(time - end);
+        if (Math.min(toStart, toEnd) <= reach) return { id: insert.id, edge: toStart <= toEnd ? 'start' : 'end' };
+        if (inside) return { id: insert.id, edge: 'move', offset: time - start };
+      } else if (pixels(insert.at - time) <= HANDLE_REACH) {
+        return { id: insert.id, edge: 'at' };
+      }
+    }
+    return null;
+  }
+
+  // Move or resize an added part as it's dragged (or nudged with the arrow keys).
+  function dragInsert(grab, time) {
+    setEdits((e) => {
+      const insert = e.inserts.find((i) => i.id === grab.id);
+      if (!insert) return e;
+      if (!insert.replaces) return withMovedInsert(e, grab.id, clamp(time, 0, length));
+      const { start, end } = insert.replaces;
+      if (grab.edge === 'start') return withMovedInsert(e, grab.id, clamp(time, 0, end - MIN_PART), end);
+      if (grab.edge === 'end') return withMovedInsert(e, grab.id, start, clamp(time, start + MIN_PART, length));
+      const newStart = clamp(time - grab.offset, 0, length - (end - start));
+      return withMovedInsert(e, grab.id, newStart, newStart + (end - start));
+    });
+  }
+
   function pointerDown(event) {
-    if (!edits || saving) return;
+    if (!edits || saving || recorder.state !== 'idle' || adding) return;
     const time = timeAt(event.clientX);
-    if (mode === 'main') {
+    const grab = mode === 'add' ? grabInsert(time) : null;
+    if (grab) {
+      dragRef.current = grab;
+      setMovingId(grab.id);
+      setSelection(null);
+    } else if (mode === 'main') {
       // Grab the nearest trim handle, if the touch is close enough to it.
       const width = waveRef.current.getBoundingClientRect().width;
       const toPixels = (t) => Math.abs(t - time) / length * width;
       const which = toPixels(edits.trimStart) <= toPixels(edits.trimEnd) ? 'start' : 'end';
-      if (toPixels(which === 'start' ? edits.trimStart : edits.trimEnd) > HANDLE_REACH) return;
+      if (toPixels(which === 'start' ? edits.trimStart : edits.trimEnd) > HANDLE_REACH) {
+        const box = waveRef.current.getBoundingClientRect();
+        seekPreview(clamp((event.clientX - box.left) / box.width, 0, 1) * playbackDuration);
+        return;
+      }
       dragRef.current = which;
+      trimTouchRef.current = { x: event.clientX, moved: false, onHandle: Boolean(event.target.closest('.trim-handle')) };
     } else {
+      setMovingId(null);
       dragRef.current = { anchor: time };
       setSelection({ start: time, end: time });
     }
@@ -179,15 +313,26 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
     const drag = dragRef.current;
     if (!drag) return;
     const time = timeAt(event.clientX);
-    if (typeof drag === 'string') moveHandle(drag, time);
+    if (typeof drag === 'string') {
+      if (Math.abs(event.clientX - trimTouchRef.current.x) > 3) trimTouchRef.current.moved = true;
+      if (trimTouchRef.current.moved) moveHandle(drag, time);
+    }
+    else if (drag.edge) dragInsert(drag, time);
     else setSelection({ start: Math.min(drag.anchor, time), end: Math.max(drag.anchor, time) });
   }
 
-  function pointerUp() {
-    if (dragRef.current && typeof dragRef.current !== 'string' && selection && selection.end - selection.start < 0.5) {
-      setSelection(null); // a tap, not a drag
+  function pointerUp(event) {
+    const drag = dragRef.current;
+    if (typeof drag === 'string' && trimTouchRef.current && !trimTouchRef.current.moved && !trimTouchRef.current.onHandle && event.type !== 'pointercancel') {
+      const box = waveRef.current.getBoundingClientRect();
+      seekPreview(clamp((event.clientX - box.left) / box.width, 0, 1) * playbackDuration);
+    }
+    if (drag && typeof drag !== 'string' && !drag.edge && selection && selection.end - selection.start < 0.5) {
+      // A tap, not a drag: when adding, it's the spot to add at; otherwise nothing is picked.
+      setSelection(mode === 'add' ? { start: drag.anchor, end: drag.anchor } : null);
     }
     dragRef.current = null;
+    trimTouchRef.current = null;
   }
 
   // Arrow keys move a focused handle by half a second (5 seconds with Shift).
@@ -198,6 +343,17 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       if (!delta) return;
       event.preventDefault();
       moveHandle(which, (which === 'start' ? edits.trimStart : edits.trimEnd) + delta);
+    };
+  }
+
+  // Arrow keys move the added part being moved by half a second (5 seconds with Shift).
+  function insertKey(insert) {
+    return (event) => {
+      const step = event.shiftKey ? 5 : 0.5;
+      const delta = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step }[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      dragInsert({ id: insert.id, edge: insert.replaces ? 'move' : 'at', offset: 0 }, insert.at + delta);
     };
   }
 
@@ -213,6 +369,39 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
     setEdits((e) => withCut(e, selection.start, selection.end));
     setSelection(null);
     setMode('main');
+  }
+
+  function leaveMode() {
+    stopPreview();
+    setMode('main');
+    setSelection(null);
+    setMovingId(null);
+    setError('');
+  }
+
+  async function startAdding() {
+    setError('');
+    try {
+      await recorder.start();
+    } catch (err) {
+      setError(`Could not start recording: ${err.message}`);
+    }
+  }
+
+  // The new recording goes in at the spot, or in place of the picked part.
+  async function finishAdding() {
+    setAdding(true);
+    try {
+      const take = await recorder.stop();
+      const decoded = await decodeClip(take.blob);
+      const over = selection.end > selection.start;
+      setEdits((e) => withInsert(e, selection.start, decoded, over ? selection.end : null));
+      leaveMode();
+    } catch (err) {
+      setError(`Could not add the recording: ${err.message}`);
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function save() {
@@ -242,17 +431,19 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   function barClass(index) {
     const time = ((index + 0.5) / BARS) * length;
     if (time < edits.trimStart || time > edits.trimEnd) return 'wave-bar trimmed';
-    if (mode === 'part' && selection && time >= selection.start && time <= selection.end) return 'wave-bar picked';
-    const segment = segments.find((s) => time >= s.start && time < s.end);
+    if (mode !== 'main' && selection && time >= selection.start && time <= selection.end) return 'wave-bar picked';
+    const segment = segments.find((s) => !s.insert && time >= s.start && time < s.end);
     if (!segment) return 'wave-bar removed';
     return segment.rate > 1 ? 'wave-bar faster' : 'wave-bar';
   }
 
   const percent = (time) => `${(time / length) * 100}%`;
   const storyAfter = segments ? plannedLength(segments) * 1000 : 0;
+  const playbackDuration = previewDuration ?? storyAfter;
   const trimSaved = edits ? edits.trimStart + (length - edits.trimEnd) : 0;
   const savedByPauses = pauseSavings(pauses);
   const partCount = edits ? edits.speedups.length + edits.cuts.length : 0;
+  const addedCount = edits ? edits.inserts.length : 0;
 
   if (!edits) {
     return (
@@ -268,7 +459,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const waveform = (
     <div
       ref={waveRef}
-      className={`waveform-edit${mode === 'part' ? ' picking' : ''}`}
+      className={`waveform-edit${mode !== 'main' ? ' picking' : ''}`}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
@@ -280,11 +471,55 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
         const height = className.endsWith('removed') ? '4px' : `${Math.max(6, level * 100)}%`;
         return <span key={index} className={className} style={{ height }} />;
       })}
-      {mode === 'part' && selection && (
+      {edits.inserts.map((insert) => {
+        const moving = mode === 'add' && insert.id === movingId;
+        const label = insert.replaces ? 'The part recorded over' : 'The added part';
+        const slider = moving && {
+          role: 'slider',
+          tabIndex: 0,
+          'aria-label': label,
+          'aria-valuemin': 0,
+          'aria-valuemax': Math.round(length),
+          'aria-valuenow': Math.round(insert.at),
+          'aria-valuetext': formatTime(insert.at * 1000),
+          onKeyDown: insertKey(insert),
+        };
+        return insert.replaces && moving ? (
+          <span
+            key={insert.id}
+            className="insert-box"
+            style={{ left: percent(insert.replaces.start), width: percent(insert.replaces.end - insert.replaces.start) }}
+            {...slider}
+          />
+        ) : (
+          <span
+            key={insert.id}
+            className={`insert-mark${moving ? ' moving' : ''}`}
+            style={{ left: percent(insert.at) }}
+            {...(slider || { 'aria-hidden': true })}
+          />
+        );
+      })}
+      {mode !== 'main' && selection && selection.end > selection.start && (
         <span className="pick-box" style={{ left: percent(selection.start), width: percent(selection.end - selection.start) }} />
+      )}
+      {mode === 'add' && selection && selection.end === selection.start && (
+        <span className="spot-mark" style={{ left: percent(selection.start) }} aria-hidden="true" />
       )}
       {mode === 'main' && (
         <>
+          <span
+            className="preview-playhead"
+            style={{ left: `${playbackDuration ? clamp(position / playbackDuration, 0, 1) * 100 : 0}%` }}
+            role="slider"
+            tabIndex={saving || !playbackDuration ? -1 : 0}
+            aria-label="Playback position in the edited story"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(playbackDuration / 1000)}
+            aria-valuenow={Math.min(Math.round(position / 1000), Math.round(playbackDuration / 1000))}
+            aria-valuetext={`${formatTime(position)} of ${formatTime(playbackDuration)}`}
+            onKeyDown={seekKey}
+          />
           <span className="trim-frame" style={{ left: percent(edits.trimStart), right: `${100 - (edits.trimEnd / length) * 100}%` }} />
           <span
             className="trim-handle"
@@ -325,6 +560,118 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       <span>{end}</span>
     </div>
   );
+
+  if (mode === 'add') {
+    const over = selection && selection.end > selection.start;
+    const recording = recorder.state !== 'idle';
+    // What the new recording can be and still fit: the room left, plus the part it records over.
+    const room = maxLength - SAFETY - after + (over ? (selection.end - selection.start) * 1000 : 0);
+    const moving = edits.inserts.find((i) => i.id === movingId);
+    let picked = addedCount ? 'Tap a spot, drag across a part, or grab an added part' : 'Tap a spot, or drag across a part';
+    if (moving) {
+      picked = moving.replaces
+        ? <>Replaces {seconds(moving.replaces.start)} to {seconds(moving.replaces.end)} · <span>{seconds(moving.replaces.end - moving.replaces.start)}</span></>
+        : <>Plays at {seconds(moving.at)}</>;
+    } else if (selection) {
+      picked = over
+        ? <>Recording over {seconds(selection.start)} to {seconds(selection.end)} · <span>{seconds(selection.end - selection.start)}</span></>
+        : <>The new part goes at {seconds(selection.start)}</>;
+    }
+    return (
+      <>
+        <NavBar
+          left={(
+            <button className="nav-button" onClick={leaveMode} disabled={recording || adding}>
+              <BackIcon />
+              Edit
+            </button>
+          )}
+          title="Add or record over"
+        />
+        <main className="content">
+          <p className="lead">
+            {moving
+              ? (moving.replaces
+                ? 'Drag the box to move it, or its edges to change what it replaces.'
+                : 'Drag the red mark to move it.')
+              : 'Tap where a new part should go, or drag across a part to record over it.'}
+          </p>
+          <section className="card wave-card">
+            {waveform}
+            {ruler}
+            <p className="pick-text">{picked}</p>
+          </section>
+
+          {moving && (
+            <div className="move-actions">
+              <button
+                className="pill pill-white"
+                onClick={() => (preview?.around === moving.id ? stopPreview() : startPreview(moving.id))}
+                disabled={preview?.loading}
+                aria-label={preview?.around === moving.id && !preview.loading ? 'Stop' : `Listen to ${AROUND} seconds either side of it`}
+              >
+                {preview?.around === moving.id && !preview.loading ? <StopIcon /> : <PlayIcon />}
+                {preview?.around === moving.id && !preview.loading ? 'Stop' : 'Listen'}
+              </button>
+              <button className="pill pill-primary" onClick={() => { stopPreview(); setMovingId(null); }}>Done</button>
+            </div>
+          )}
+
+          {selection && (
+            <>
+              <RecorderCard tint="" recorder={recorder} length={recorder.elapsed} />
+              <p className="hint">
+                {room > 0 ? `Up to ${formatTime(room)} fits.` : 'The story is already at its limit. Record over a part, or shorten it first.'}
+              </p>
+            </>
+          )}
+          {(error || recorder.error) && <p className="error" role="alert">{error || recorder.error}</p>}
+
+          {addedCount > 0 && !recording && (
+            <section className="group-section">
+              <h2 className="group-label">Added parts</h2>
+              <div className="story-list">
+                {edits.inserts.map((insert) => (
+                  <div key={insert.id} className={`story-row added-row${insert.id === movingId ? ' selected' : ''}`}>
+                    <span className="mini-text">
+                      <strong>{seconds(lengthOf(insert.samples))} {insert.replaces ? 'recorded over a part' : 'added'}</strong>
+                      <span>
+                        {insert.replaces
+                          ? `In place of ${seconds(insert.replaces.start)} to ${seconds(insert.replaces.end)}`
+                          : `At ${seconds(insert.at)}`}
+                      </span>
+                    </span>
+                    {insert.id !== movingId && (
+                      <button className="action edit" onClick={() => { setMovingId(insert.id); setSelection(null); }}>Move</button>
+                    )}
+                    <button
+                      className="action delete"
+                      onClick={() => {
+                        if (insert.id === movingId) setMovingId(null);
+                        setEdits((e) => withoutInsert(e, insert.id));
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {selection && (
+            <div className="actions">
+              <RecordButtons
+                recorder={recorder}
+                finishLabel={adding ? 'Adding...' : over ? 'Use this instead' : 'Add this part'}
+                onStart={startAdding}
+                onStop={finishAdding}
+              />
+            </div>
+          )}
+        </main>
+      </>
+    );
+  }
 
   if (mode === 'part') {
     return (
@@ -391,13 +738,12 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
           {waveform}
           {ruler}
           <div className="preview-row">
-            <button className="play-button" onClick={togglePreview} disabled={saving || preview?.loading} aria-label={preview ? 'Stop' : 'Play the edited story'}>
-              {preview && !preview.loading ? <StopIcon /> : <PlayIcon />}
+            <button className="play-button" onClick={togglePreview} disabled={saving || preview?.loading || !playbackDuration} aria-label={preview ? 'Pause the edited story' : 'Play the edited story'}>
+              {preview && !preview.loading ? <PauseIcon /> : <PlayIcon />}
             </button>
             <span>
-              {!preview && 'Play the edited story'}
               {preview?.loading && 'Getting it ready...'}
-              {preview && !preview.loading && <>{formatTime(preview.position)} of {formatTime(storyAfter)}</>}
+              {!preview?.loading && <>{formatTime(position)} of {formatTime(playbackDuration)}</>}
             </span>
           </div>
         </section>
@@ -429,7 +775,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
               <span>Drag the purple handles{trimSaved >= 0.5 ? ` · saves ${formatTime(trimSaved * 1000)}` : ''}</span>
             </span>
           </div>
-          <button className="tool-row" onClick={() => setMode('part')} disabled={saving}>
+          <button className="tool-row" onClick={() => { stopPreview(); setMode('part'); }} disabled={saving}>
             <span className="tool-text">
               <strong>Speed up or cut a part</strong>
               <span>
@@ -439,6 +785,17 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
                     edits.cuts.length && `${edits.cuts.length} cut`,
                   ].filter(Boolean).join(' · ')
                   : 'Pick a part, then play it faster or cut it'}
+              </span>
+            </span>
+            <ChevronIcon />
+          </button>
+          <button className="tool-row" onClick={() => { stopPreview(); setMode('add'); }} disabled={saving}>
+            <span className="tool-text">
+              <strong>Add or record over a part</strong>
+              <span>
+                {addedCount
+                  ? `${addedCount} ${addedCount === 1 ? 'part' : 'parts'} added`
+                  : 'Record something new, at any point'}
               </span>
             </span>
             <ChevronIcon />

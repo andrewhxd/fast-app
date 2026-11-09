@@ -82,7 +82,7 @@ export default function Home({
           </button>
           <button className="pill pill-white" onClick={onListen}>
             <HeadphonesIcon />
-            Listen to stories
+            Listen and Edit Stories
           </button>
           <p className="footnote">Playing stories to your loved one opens once all 4 sets are approved.</p>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CareTeam, { InviteSomeone } from './CareTeam.jsx';
 import YourCareTeams, { StartCareTeam } from './CareTeams.jsx';
 import EditStory from './EditStory.jsx';
@@ -13,8 +13,8 @@ import StorySets from './StorySets.jsx';
 import { displayName, signOut, useUser } from './auth.js';
 import { isValidGroupId, listMyGroups } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon, PeopleIcon } from './icons.jsx';
-import { listStories } from './storage.js';
-import { SET_MIN, formatTime, setKey, setName, summarizeSets } from './stories.js';
+import { listStories, removeExpiredStories } from './storage.js';
+import { SET_MIN, formatTime, isPastRecovery, setKey, setName, summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber },
 // { name: 'edit', storyId }, { name: 'team' } (Care team), { name: 'invite' }, { name: 'teams' }
@@ -76,7 +76,7 @@ function firstScreen() {
 const MENU = [
   { label: 'Home', screen: HOME, icon: <HomeIcon /> },
   { label: 'Record a Story', screen: SETS_SCREEN, icon: <MicIcon /> },
-  { label: 'Listen to Stories', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
+  { label: 'Listen and Edit Stories', sidebarLabel: 'Listen', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
   { label: 'Care team', screen: TEAM_SCREEN, icon: <PeopleIcon /> },
 ];
 
@@ -132,6 +132,16 @@ function CareApp({ user }) {
   const [savingEdit, setSavingEdit] = useState(false); // an edited story is replacing the old one
 
   const currentGroup = groups?.find((item) => item.id === group.groupId);
+  // The current group's stories, split into the ones in its sets and the deleted ones that can
+  // still be restored (most recently deleted first); ones past their recovery period are being
+  // removed. Memoized, so screens get the same arrays on every render and don't reload audio.
+  const currentStories = currentGroup && storiesGroupId === group.groupId ? stories : null;
+  const [activeStories, deletedStories] = useMemo(() => {
+    if (!currentStories) return [null, null];
+    const deleted = currentStories.filter((s) => s.deletedAt && !isPastRecovery(s));
+    deleted.sort((a, b) => b.deletedAt.toMillis() - a.deletedAt.toMillis());
+    return [currentStories.filter((s) => !s.deletedAt), deleted];
+  }, [currentStories]);
 
   async function refreshStories(groupId = group.groupId) {
     if (groupId !== activeGroupId.current) return;
@@ -140,11 +150,13 @@ function CareApp({ user }) {
     setError('');
     try {
       const list = await listStories(groupId);
-      if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
+      const current = loadId === storyLoadId.current && groupId === activeGroupId.current;
+      if (current) {
         setStories(list);
         setStoriesGroupId(groupId);
-        return list;
       }
+      removeExpiredStories(list); // in the background; they're gone from the list next time
+      return current ? list : null;
     } catch (err) {
       if (loadId === storyLoadId.current && groupId === activeGroupId.current) {
         setError(`Could not load stories: ${err.message}`);
@@ -300,8 +312,9 @@ function CareApp({ user }) {
     setSavingEdit(true); // the old story disappears from the list before this screen closes
     try {
       const updatedStories = await refreshStories();
+      // Deleted stories (including the version this edit replaced) don't count toward a set.
       const setTotal = updatedStories
-        ? summarizeSets(updatedStories)[setKey(editedStory.affect, editedStory.setNumber)].total
+        ? summarizeSets(updatedStories.filter((s) => !s.deletedAt))[setKey(editedStory.affect, editedStory.setNumber)].total
         : null;
       if (setTotal !== null && setTotal < SET_MIN) {
         const entry = { name: 'record', affect: editedStory.affect, setNumber: editedStory.setNumber, depth: screen.depth };
@@ -345,8 +358,7 @@ function CareApp({ user }) {
 
   if (!group.groupId) return <Loading />;
 
-  const currentStories = currentGroup && storiesGroupId === group.groupId ? stories : null;
-  const summary = currentStories && summarizeSets(currentStories);
+  const summary = activeStories && summarizeSets(activeStories);
   const recordInSet = (affect, setNumber) => goTo({ name: 'record', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
@@ -423,7 +435,8 @@ function CareApp({ user }) {
       <StoryLibrary
         groupId={group.groupId}
         key={group.groupId}
-        stories={currentStories}
+        stories={activeStories}
+        deletedStories={deletedStories}
         summary={summary}
         notice={notice}
         backButton={backButton}
@@ -434,7 +447,7 @@ function CareApp({ user }) {
       />
     );
   } else if (screen.name === 'edit') {
-    const story = currentStories?.find((s) => s.id === screen.storyId);
+    const story = activeStories?.find((s) => s.id === screen.storyId);
     content = story ? (
       <EditStory key={story.id} groupId={group.groupId} story={story} summary={summary} onSaved={editSaved} onCancel={goBack} />
     ) : (

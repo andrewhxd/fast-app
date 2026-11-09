@@ -104,6 +104,7 @@ npm run dev:remote   # http://localhost:5173, against the dev Firebase project
 npm run build        # production build into dist/, for the live project
 npm run deploy:dev   # build for the dev project and deploy it to https://fast-app-cs499-dev.web.app
 npm run deploy:branch # build for the dev project and deploy it to a 7-day preview address named after the branch
+npm run test:unit    # the story editor's plan and recording set progress
 npm run test:rules   # the security rules tests (tests/rules.test.js), against the Firestore emulator
 ```
 
@@ -116,7 +117,7 @@ The seed writes through the security rules, the way the app does, so a data mode
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
-The security rules have tests (`npm run test:rules`); there is no other test suite or linter yet.
+The security rules have tests (`npm run test:rules`), as do the story editor's plan and recording set progress (`npm run test:unit`); there is no linter yet.
 Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
@@ -163,11 +164,12 @@ Set totals and the Listen screen include only the current care team's stories.
 On a phone, **Menu** (top right) shows your account and opens Home, Record a Story, Listen to Stories, Care team, Your care teams and Sign out.
 - **Record a story**: pick a set; each shows its stories, total and time left to go, with a bar from 0:00 to 11:00 and the 9:00 to 11:00 target shaded.
 A set in range shows "Ready" and can't take more stories.
-- **Recording a story**, in 3 steps (shown under the set's name at the top):
+- **Recording a story**, in 3 steps (shown under the set's name at the top).
+A guide to recording opens over the screen the first time on each device, and from the info button (top right) after that.
   1. Record the storyteller saying the patient's name 3 times.
   2. Record the story.
 The timer continues from the name clip, so it shows the whole story's length toward 5:00, and turns yellow at 4:30.
-When the set has less than 5:00 of room left, the bar marks where the set is full and says how long until then.
+When the set has 5:00 or less of room left, the bar marks the 9:00 minimum and 11:00 maximum and shows the time remaining to each.
 Finish waits a second after starting, so a double tap can't end the recording.
   3. Listen back, enter the title, storyteller, relationship and affect, then **Add story** or **Delete recording**.
 An **Edit** button opens the story editor.
@@ -177,14 +179,17 @@ An **Edit** button opens the story editor.
   - **Trim** the start and end by dragging the purple handles on the waveform (or with the arrow keys).
   - **Shorten long pauses**: one switch shortens every silence over 1½ seconds to half a second.
   - **Speed up or cut a part**: drag across part of the waveform, then play it at 1.1× or 1.2× (the voice keeps its natural pitch) or cut it.
+  - **Add or record over a part**: tap a spot on the waveform and record a new part there, or drag across a part and record something in its place. Added parts show as red marks and can be moved afterwards: drag a mark, or a part recorded over by its box (or its edges, to change what it replaces), with **Listen** playing a few seconds either side; each can be removed (a part recorded over comes back).
   - **Play** the edited story before saving; **Undo all changes** starts over.
   - Saving processes the audio in the browser and stores the story as MP3.
-An edited saved story replaces the old one in one step, so it's never half saved.
+An edited saved story replaces the old one in one step, so it's never half saved, and the earlier version goes to Recently deleted.
 - **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and its stories.
 Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
+**Recently deleted**, at the end of Listen, keeps deleted stories (and the earlier versions of edited ones) for 30 days: each can be played and **Restore**d to its set, or to the other set of its affect if that one is full.
 **Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
+The set and individual story players have seek bars that move through the name and story recordings.
 - The phone's back button moves between screens.
 
 ### On a computer
@@ -245,7 +250,8 @@ groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
-                                         chunkCount, createdAt
+                                         chunkCount, createdAt, and once deleted: deletedAt,
+                                         deletedBy, replacedBy (the edited story, after an edit)
 treatments/demo/stories/{id}/chunks/{i}  data: up to 1 MB of audio
 ```
 
@@ -270,7 +276,9 @@ Every request must be signed in.
 Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
-Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edit is moving a story (`setNumber` between 1 and 2).
+Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
+Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
+The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).
 Everything else is denied.
 `npm run test:rules` checks all of this; add a test with every rules change.
 
@@ -284,6 +292,8 @@ Everything else is denied.
 - `src/Home.jsx`: the home screen.
 - `src/StorySets.jsx`: the Record a story screen, the set cards (also on Home on a computer), and the set progress bar.
 - `src/RecordStory.jsx`: the recording steps and the too-long screens.
+- `src/RecorderControls.jsx`: the recorder's card and buttons, shared by recording a story and adding a part in the editor.
+- `src/RecordingGuide.jsx`: the How to record a story dialog.
 - `src/useRecorder.js`: records one clip from the microphone, with pause and a timer.
 - `src/LiveWaveform.jsx`: the live volume bars shown while recording.
 - `src/StoryEditor.jsx`: the story editor screen; `src/EditStory.jsx` opens a saved story in it.

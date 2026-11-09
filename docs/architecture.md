@@ -45,6 +45,8 @@ If the URL points to a group the person isn't in, the app shows Your care teams 
 - `listStories(groupId)` queries only the current group's stories, the only query the rules allow.
 - `RecordStory` passes the current group ID to `addStory()`, which stores it as the story's `group` field.
 `replaceStoryAudio()` keeps the original group.
+- `CareApp` splits the stories into the ones in the sets and the deleted ones (`deletedAt`), memoized so screens get the same arrays on every render; only the first count toward totals.
+Loading the stories also removes, in the background, deleted ones past their 30 days (`removeExpiredStories()`).
 - `App` loads the selected group's story details and passes them down; `summarizeSets()` turns them into each set's count and total.
 Changing groups clears the visible list while loading and ignores stale requests, so one group's stories cannot appear under another group's URL.
 - `StoryLibrary` preloads audio only for its current story array; set and individual players use those same filtered stories.
@@ -76,10 +78,11 @@ The rules behind it:
 Stories without a `group` (saved before groups existed) can't be read by anyone until they're given one.
 - **A story's audio is chunked.** Firestore documents max out at 1 MiB, so a story's audio is split into 1 MB chunk documents (at most 5, so 5 MB per story).
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
-- **Writes are atomic batches.** A story and all its chunks are written in one batch, and deleted in one batch.
+- **Writes are atomic batches.** A story and all its chunks are written in one batch, and removed for good in one batch.
 The rules enforce this with `existsAfter()` and `getAfter()`, so a half-saved or half-deleted story can't exist.
-- **Saved stories never change, except `setNumber`.** Moving or swapping updates only `setNumber`, and the rules reject any other update.
-Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and deletes the old one in a single batch.
+- **Saved stories change only by moving, deleting and restoring.** Moving or swapping updates only `setNumber`; deleting adds `deletedAt` and `deletedBy`; restoring removes them (and may change `setNumber`). The rules reject any other update, and a deleted story can't move.
+- **Deleting is a soft delete.** A deleted story keeps its audio and can be restored for 30 days (`RECOVERY_DAYS`); the rules refuse to remove it for good any sooner.
+Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and deletes the old one (with `replacedBy` naming the new one) in a single batch, so the earlier version can be restored too.
 The edited story gets a new id and a new `createdAt`, so it moves to the end of its set's list.
 - **Durations are measured, not read from the file.** Some browsers (Chrome's WebM) write recordings without a readable length, so `useRecorder` times the recording itself and the durations are stored in milliseconds as integers.
 Never take a length from an `<audio>` element.
@@ -100,7 +103,10 @@ To add or change a story field:
 ## Recording (`src/RecordStory.jsx`, `src/useRecorder.js`, `src/LiveWaveform.jsx`)
 
 - `RecordStory` is a small state machine over `step`: `name` → `story` → `review`, with `tooLong` or `overSet` when the story doesn't fit, and `edit` for the editor.
+When a set has at most 5:00 of room, `recordingSetProgress()` calculates the 9:00 and 11:00 markers and remaining times from the saved set and the unsaved recording, including its name.
 The step number shown (1 to 3) is derived from it.
+- On review, changing the affect selects the accepting set with the most room that fits the whole recording, with set 1 breaking ties.
+Returning to the starting affect selects the original set; ready sets do not accept new recordings.
 - `useRecorder` wraps `MediaRecorder`: start, pause, resume, stop, a 100 ms timer, and clean-up of the microphone if the screen closes mid-recording.
 `stop()` resolves to `{ blob, duration }`.
 - The format comes from `src/audio.js`: AAC in MP4 when the browser supports it (every iPhone and modern Chrome), otherwise WebM or Ogg with Opus, at 64 kbps.
@@ -114,16 +120,21 @@ Both clips of a story must be in the same format, because they're stored as one 
 - `ClipPlayer` plays a list of clips back to back as if they were one recording: a story is `[name, story]`, a set is every story's clips in order.
 - **Pass the same `clips` array on every render** (from `useMemo` or a ref), or the player rebuilds its URLs and restarts.
 `StoryLibrary` keeps its arrays in refs for this reason.
+- The seek bar uses measured clip durations to map a position across the name and story clips, including across stories in a set.
+When seeking to another clip, the player waits for its metadata before applying the position.
 - Only one player plays at a time: a module-level `current` remembers the playing player, and starting another pauses it.
 - Two looks: the full player (play button, label, progress bar) and `compact` (a story row).
 
 ## The story editor (`src/StoryEditor.jsx`, `src/audioEdit.js`)
 
-- An edit is just a description over the original recording, in seconds: `{ trimStart, trimEnd, shortenPauses, cuts, speedups }`.
+- An edit is just a description over the original recording, in seconds: `{ trimStart, trimEnd, shortenPauses, cuts, speedups, inserts }`.
+An insert is a new recording (decoded samples) placed at `at`; recording over a part also takes out `replaces` while the insert is there, so removing it brings the part back.
+Inserts are kept whole: trims, cuts, pauses and speed-ups apply only to the original recording.
+Each insert has an `id`, so it can be moved (`withMovedInsert()`) or removed; `insertSpan()` says where it plays in the edited story, for the editor's "Listen" around it.
 Nothing is processed until the preview plays or the story is saved, so every change is free to undo.
 - `findPauses()` finds quiet stretches of 1.5 seconds or more, with a threshold computed from the recording itself.
 Shortening keeps half a second of each.
-- `planSegments()` turns the edit into the kept parts and their playback rates.
+- `planSegments()` turns the edit into the pieces to play in order: the kept parts with their playback rates, and the inserts where they go (an insert outside the trimmed ends goes at that end).
 `plannedLength()` gives the new length instantly, without rendering.
 - `render()` cuts and joins the parts with 10 ms fades and time-stretches sped-up parts with SoundTouch (`soundtouchjs`, pitch kept).
 `encodeMp3()` encodes with LAME (`wasm-media-encoders`) at 64 kbps.

@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react';
 import ClipPlayer from './ClipPlayer.jsx';
-import LiveWaveform from './LiveWaveform.jsx';
 import NavBar from './NavBar.jsx';
+import RecordingGuide, { GUIDE_STEP, seenRecordingGuide } from './RecordingGuide.jsx';
+import { RecordButtons, RecorderCard } from './RecorderControls.jsx';
 import StoryEditor from './StoryEditor.jsx';
-import { PauseIcon, PlayIcon, RedoIcon, ScissorsIcon, StopIcon } from './icons.jsx';
+import { InfoIcon, RedoIcon, ScissorsIcon } from './icons.jsx';
 import { addStory } from './storage.js';
 import {
-  NAME_MAX, RELATIONSHIPS, SET_MAX, STORY_MAX, STORY_WARN, fitsInSet, formatTime, setKey, setName,
+  NAME_MAX, RELATIONSHIPS, SET_MAX, STORY_MAX, bestRecordingSet, fitsInSet, formatTime, setKey, setName, setStatus,
 } from './stories.js';
 import { useRecorder } from './useRecorder.js';
-
-const STATUS = { idle: 'Ready to record', recording: 'Recording', paused: 'Paused' };
-const WARN_BEFORE_LIMIT = STORY_MAX - STORY_WARN; // the bar turns yellow this long before the limit
 
 // Plain explanations for the save errors people can run into.
 const SAVE_ERRORS = {
@@ -19,77 +17,6 @@ const SAVE_ERRORS = {
   'permission-denied': "the server didn't accept this story. Try recording it again.",
   unavailable: "the app can't reach the cloud. Check the internet connection and try again.",
 };
-
-// The recorder card: status, the big timer, the live waveform, and for the story a bar toward its
-// limit. `length` is the story so far with its name clip, since the 5:00 cap counts the name.
-// `room` is how much the set can still take; when it's under 5:00 the bar marks where the set is full.
-function RecorderCard({ tint, recorder, length, story, room }) {
-  const { state } = recorder;
-  const limit = Math.min(STORY_MAX, room);
-  let level = 'ok';
-  if (length > limit) level = 'long';
-  else if (length >= limit - WARN_BEFORE_LIMIT) level = 'warn';
-
-  let hint;
-  if (room < STORY_MAX) hint = length <= room ? `${formatTime(room - length)} until this set is full` : 'This set is full. Finish now.';
-  else if (length > STORY_MAX) hint = `Over ${formatTime(STORY_MAX)}`;
-  else hint = `${formatTime(STORY_MAX - length)} left${level === 'warn' ? '. Start wrapping up.' : ''}`;
-
-  return (
-    <section className={`card recorder ${tint}`}>
-      <span className={`status ${state}`} aria-live="polite">
-        <span className="record-dot" aria-hidden="true" />
-        {STATUS[state]}
-      </span>
-      <div className="timer">
-        <strong>{formatTime(length)}</strong>
-        {story && <span>of {formatTime(STORY_MAX)}</span>}
-      </div>
-      {/* Keeps its height when not recording, so the screen doesn't jump. */}
-      <div className="waveform-slot">{state === 'recording' && <LiveWaveform stream={recorder.stream} />}</div>
-      {story && (
-        <div className="limit-bar">
-          <div className="bar bar-thick">
-            <div className={`bar-fill ${level}`} style={{ width: `${Math.min(length / STORY_MAX, 1) * 100}%` }} />
-            {room < STORY_MAX && <div className="bar-marker" style={{ left: `${(room / STORY_MAX) * 100}%` }} />}
-          </div>
-          <div className="bar-labels">
-            {room < STORY_MAX && <span className="marker-label" style={{ left: `${(room / STORY_MAX) * 100}%` }}>Set full</span>}
-            <span className="end-label">{formatTime(STORY_MAX)}</span>
-          </div>
-          <p className="timer-hint">{hint}</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// Start, then Finish and Pause (or Resume) while recording.
-function RecordButtons({ recorder, finishLabel, onStart, onStop }) {
-  const { state } = recorder;
-  if (state === 'idle') {
-    return (
-      <button className="pill pill-record" onClick={onStart}>
-        <span className="record-dot" aria-hidden="true" />
-        Start recording
-      </button>
-    );
-  }
-  const paused = state === 'paused';
-  return (
-    <>
-      {/* Finish takes Start's place, so it waits a second: a double tap shouldn't end the recording. */}
-      <button className="pill pill-record" onClick={onStop} disabled={recorder.elapsed < 1000}>
-        <StopIcon />
-        {finishLabel}
-      </button>
-      <button className="pill pill-white" onClick={paused ? recorder.resume : recorder.pause}>
-        {paused ? <PlayIcon /> : <PauseIcon />}
-        {paused ? 'Resume' : 'Pause'}
-      </button>
-    </>
-  );
-}
 
 // Records one personal story into a set, in steps:
 //   name      record the patient's name said 3 times
@@ -105,24 +32,31 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   const [nameTake, setNameTake] = useState(null); // { blob, duration }
   const [storyTake, setStoryTake] = useState(null);
   const [edited, setEdited] = useState(false);
-  const [affect, setAffect] = useState(startAffect); // can change on review; the set number stays
+  const [affect, setAffect] = useState(startAffect); // can change on review
   const [title, setTitle] = useState('');
   const [storyteller, setStoryteller] = useState('');
   const [relationship, setRelationship] = useState('');
+  const [otherRelationship, setOtherRelationship] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [guideStep, setGuideStep] = useState(() => (seenRecordingGuide() ? null : 0)); // the guide's first card, or null when closed
 
-  const setTime = summary[setKey(affect, setNumber)].total; // already in the set
-  const room = SET_MAX - setTime; // how much more this set can take
-  const limit = Math.min(STORY_MAX, room); // the most this story can be
   const nameTime = nameTake?.duration ?? 0;
   const takeTime = nameTime + (storyTake?.duration ?? 0); // this story, name included
-  const fits = takeTime <= STORY_MAX && fitsInSet(setTime, takeTime);
+  const changedAffect = affect !== startAffect;
+  const targetNumber = changedAffect ? bestRecordingSet(summary, affect, takeTime) : setNumber;
+  const setTime = summary[setKey(affect, targetNumber ?? setNumber)].total;
+  const room = SET_MAX - setTime;
+  const fits = targetNumber !== null && setStatus(setTime) === 'short' && takeTime <= STORY_MAX && fitsInSet(setTime, takeTime);
+  // If neither set fits, let the editor shorten toward the largest available space.
+  const editNumber = targetNumber ?? bestRecordingSet(summary, affect, 0);
+  const editRoom = editNumber === null ? STORY_MAX : SET_MAX - summary[setKey(affect, editNumber)].total;
+  const limit = Math.min(STORY_MAX, editRoom);
   const elapsed = recorder.state === 'idle' ? 0 : recorder.elapsed;
   const clips = useMemo(() => [nameTake, storyTake], [nameTake, storyTake]); // the same array while typing
   const tint = `tint-${affect}`;
-  const set = setName(affect, setNumber);
+  const set = setName(affect, targetNumber ?? setNumber);
 
   async function startRecording() {
     setError('');
@@ -174,7 +108,9 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
   }
 
   async function save() {
-    if (!title.trim() || !storyteller.trim() || !relationship) {
+    if (!fits) return;
+    const relationshipToSave = relationship === 'Other' ? otherRelationship.trim() : relationship;
+    if (!title.trim() || !storyteller.trim() || !relationshipToSave) {
       setError('Fill in the title, storyteller and relationship first.');
       return;
     }
@@ -187,9 +123,9 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         story: storyTake,
         title: title.trim(),
         storyteller: storyteller.trim(),
-        relationship,
+        relationship: relationshipToSave,
         affect,
-        setNumber,
+        setNumber: targetNumber,
       });
     } catch (err) {
       setError(`Could not save: ${SAVE_ERRORS[err.code] ?? err.message}`);
@@ -205,7 +141,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
         name={nameTake}
         story={storyTake}
         maxLength={limit}
-        limitText={room < STORY_MAX ? `${set} has room for ${formatTime(room)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
+        limitText={editRoom < STORY_MAX ? `${setName(affect, editNumber)} has room for ${formatTime(editRoom)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
         onSave={(editedClips) => {
           setNameTake(editedClips.name);
           setStoryTake(editedClips.story);
@@ -230,9 +166,21 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
             Cancel
           </button>
         )}
-        title={set}
+        title={targetNumber === null ? 'Record a story' : set}
         subtitle={`Step ${stepNumber} of 3`}
+        right={(
+          <button
+            className="icon-button"
+            onClick={() => setGuideStep(GUIDE_STEP[step])}
+            disabled={saving || recorder.state === 'recording'}
+            aria-label="How to record a story"
+            title="How to record a story"
+          >
+            <InfoIcon />
+          </button>
+        )}
       />
+      {guideStep !== null && <RecordingGuide affect={affect} set={set} startStep={guideStep} onClose={() => setGuideStep(null)} />}
 
       <main className="content">
         {notice && <p className="notice" role="alert">{notice}</p>}
@@ -344,8 +292,15 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
               <select id="relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)} required>
                 <option value="" disabled>Choose one</option>
                 {RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value="Other">Other</option>
               </select>
             </div>
+            {relationship === 'Other' && (
+              <div className="field">
+                <label className="field-label" htmlFor="other-relationship">Your relationship to the patient</label>
+                <input id="other-relationship" value={otherRelationship} onChange={(event) => setOtherRelationship(event.target.value)} maxLength={100} placeholder="Enter your relationship" />
+              </div>
+            )}
             <fieldset className="field">
               <legend className="field-label">Affect of the event</legend>
               <div className="segmented">
@@ -360,9 +315,17 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
               </div>
             </fieldset>
 
+            {changedAffect && targetNumber !== null && (
+              <p className="notice" role="status">This story will be added to {set}.</p>
+            )}
+
             {!fits && (
               <p className="error" role="alert">
-                {set} only has room for {formatTime(room)}, and this story is {formatTime(takeTime)}. Edit it to fit, or pick the other affect.
+                {changedAffect && targetNumber === null
+                  ? editNumber === null
+                    ? <>Both {affect} sets are already ready. Choose the other affect.</>
+                    : <>Neither {affect} set has enough available room for this story. Edit it to fit, or choose the other affect.</>
+                  : <>{set} cannot take this story. Edit it to fit, or choose the other affect.</>}
               </p>
             )}
             {errorMessage}

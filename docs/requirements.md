@@ -84,14 +84,15 @@ Photos of the events help but aren't required.
 Once the clinician approves them, the sets are locked and ready to play.
 
 User stories (slide 11), all built unless marked:
-- Read instructions on how to record. **Partly built** (short hints on each screen; no instructions screen).
+- Read instructions on how to record.
 - Record the patient's name 3 times before each story.
 - Record stories into 2 happy sets and 2 challenging sets of 9:00 to 11:00 each.
 - See each set's progress toward 9:00 to 11:00.
 - Be told when a story is over 5 minutes, and choose to delete and re-record or edit it.
 - Play back what was just recorded.
-- Delete and add segments to a recording. **Partly built**: the editor cuts and speeds up parts but can't add new audio into a story.
-- Add a title, storyteller name, relationship (Mother, Father, Sister, Brother, Aunt, Uncle, Cousin or Friend) and affect (happy, or challenging/neutral).
+- Delete and add segments to a recording. Built: the editor cuts parts, adds new recordings at any point, and records over a part.
+- Add a title, storyteller name, relationship (Mother, Father, Sibling, Partner, Spouse, Child, Aunt, Uncle, Cousin, Friend or a custom entry) and affect (happy, or challenging/neutral).
+Existing Brother and Sister entries remain visible as saved.
 - If a story would take its set over 11:00, choose to re-record or edit it, after seeing the time left in the set and the story's length.
 - Once all 4 sets are complete, a clinician does a final review and approves them, after which nothing can be edited. **Not built.**
 
@@ -113,6 +114,7 @@ The app deliberately has a simpler editor; see [design.md](design.md).
 - See the stories in each set, and where each set stands against 9:00 to 11:00.
 - Listen to a whole set or one story.
 - Edit or delete a story.
+Deleting is recoverable: deleted stories stay in Listen's Recently deleted for 30 days, where they can be restored (asked for in the client's feedback, issue #6).
 If an edit makes a set too long, go to its list of stories to pick one to edit; if too short, go back to recording.
 - Move stories between sets with the same affect.
 - The clinician can review stories and give comments. **Not built.**
