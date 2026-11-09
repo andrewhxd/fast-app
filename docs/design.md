@@ -75,6 +75,9 @@ Recording has no randomness.
 The app checks both while recording, and the database rules check the 5:00 limit again.
 - **Open question**: slide 10 gives happy sets 9:45 to 10:15, while slides 11 and 19 say 9:00 to 11:00.
 The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one setting.
+- **Access levels** (slide 4): the lead caregiver picks one of 4 levels when inviting someone (Administrator, Clinician, Record and edit stories, Play stories), each with a line saying what it can do, and can change it from the person's ⋯ on Care team.
+The app hides what a level doesn't include rather than showing it disabled, so someone who only plays sees Listen and Play, and Listen without Rearrange, ⋯ or Recently deleted.
+Everyone can listen to the stories.
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
 Approval isn't built, so for testing any set with stories can be played, and Home says so under the Play button.
 - **Playing starts with a checklist** (slides 24 and 26), used at a bedside, so each item is a big row that's easy to tap.

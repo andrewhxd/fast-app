@@ -68,6 +68,11 @@ The redirect flow would need `authDomain` set to the app's own domain to work in
 - An invite's ID is the secret in its link.
 The rules only let the person it's for (by email) read it, so "for someone else" and "canceled" look the same to the app.
 - The owner is the group's `ownerId`, not a field on the member, so there's one place to change when the lead is handed over.
+- **Access levels** (`src/access.js`): each member document has `access` ("administrator", "clinician", "stories" or "player"); the owner's is "administrator", and a missing one means "stories".
+`listMyGroups()` gives each group the person's `access` ("lead" for the owner), and `canManage()`, `canRecord()` and `canPlay()` decide what the menu, Home, Listen and Care team show.
+`App` also refuses a screen the level doesn't include (`NEEDS`), for Back to a screen from before a change.
+The rules mirror these in `canManage()`, `canRecord()` and `canPlay()`, so hiding a button is never the only protection.
+They accept members and invites without `access` (written by older versions of the app) as "stories", and joining must copy the invite's level, so leaving it out can't raise someone's access.
 
 ## Storage (`src/storage.js` and `firestore.rules`)
 

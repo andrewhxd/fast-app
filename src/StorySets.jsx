@@ -32,7 +32,7 @@ function SetCard({ affect, setNumber, count, total, onRecord }) {
           <strong>{setName(affect, setNumber)}</strong>
           <span>{status === 'short' && count ? `${stories} · ${setStatusText(total)}` : stories}</span>
         </span>
-        {status === 'short' && (
+        {status === 'short' && onRecord && (
           <button className="pill-small pill-primary" onClick={onRecord} aria-label={`Record in ${setName(affect, setNumber)}`}>
             <span className="record-dot soft" aria-hidden="true" />
             Record
@@ -51,7 +51,8 @@ function SetCard({ affect, setNumber, count, total, onRecord }) {
   );
 }
 
-// The 4 sets, happy beside challenging on a computer, each with a Record button until it's full.
+// The 4 sets, happy beside challenging on a computer, each with a Record button until it's full
+// (none without `onRecord`, for someone who can't record).
 export function SetGroups({ summary, onRecord }) {
   return (
     <div className="groups">
@@ -64,7 +65,7 @@ export function SetGroups({ summary, onRecord }) {
               affect={affect}
               setNumber={setNumber}
               {...summary[setKey(affect, setNumber)]}
-              onRecord={() => onRecord(affect, setNumber)}
+              onRecord={onRecord && (() => onRecord(affect, setNumber))}
             />
           ))}
         </section>

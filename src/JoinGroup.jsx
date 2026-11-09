@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import NavBar from './NavBar.jsx';
 import { checkEmailVerified, sendVerificationEmail } from './auth.js';
+import { accessDoes, accessLabel } from './access.js';
 import { acceptInvite, getInvite } from './group.js';
 
 // Opened from an invite link (?group=...&invite=...): who invited you to which care team, and Join.
@@ -37,7 +38,7 @@ export default function JoinGroup({ user, groupId, inviteId, onJoined, onDismiss
 
   const join = () => run(async () => {
     try {
-      await acceptInvite(groupId, inviteId, user);
+      await acceptInvite(invite, groupId, user);
     } catch (err) {
       throw new Error(`Could not join the care team (${err.code ?? err.message}). Please try again.`);
     }
@@ -79,8 +80,7 @@ export default function JoinGroup({ user, groupId, inviteId, onJoined, onDismiss
           {invite.invitedByName} invited you to {invite.groupName}&apos;s care team
         </h1>
         <p className="lead">
-          You&apos;ll be able to record stories for {invite.groupName}, listen to them, and edit them, together with
-          everyone else on the care team.
+          With <strong>{accessLabel(invite.access)}</strong> access, you&apos;ll be able to {accessDoes(invite.access)}.
         </p>
         {!user.emailVerified && (
           <section className="card">

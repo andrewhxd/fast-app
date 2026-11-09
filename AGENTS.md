@@ -152,10 +152,17 @@ npx firebase deploy --only firestore,hosting --project fast-app-cs499
 A new email account gets an email to confirm its address, which it needs before joining a care team.
 - **Care teams** (a "group" in the code, a "treatment" in the project doc): one patient's care team.
 Someone with no care team starts one by entering their loved one's name, and becomes its **lead caregiver** (the group's owner).
-Everyone else is a **member**, who can record, listen to, edit and move the team's stories, and leave the team.
-For now there are only these two roles; the doc's administrator, clinician, storyteller and player levels aren't built.
-- **Care team screen**: the lead caregiver, the family and friends, and (for the lead caregiver) invites not yet accepted.
-The lead caregiver invites someone by email address, gets a link to send from their own phone (Share or Copy), and can copy an invite's link again, cancel it, or remove a member.
+Everyone else is a **member** with one of the 4 access levels from slide 4 (`src/access.js`), chosen when they're invited:
+  - **Administrator**: invite and remove people and change their access, record and edit stories, and play them.
+  - **Clinician**: record and edit stories, and play them (the clinician's review and approval aren't built yet).
+  - **Record and edit stories**: record, listen to, edit and move stories.
+  - **Play stories**: play story sets, and listen to the stories (Listen is read-only for them).
+Everyone can listen to the stories, and the lead caregiver can do everything.
+Members who joined before access levels count as Record and edit stories.
+The app hides what someone's level doesn't include, and the rules enforce it.
+- **Care team screen**: the lead caregiver, the family and friends with each person's access level, and (for the lead caregiver and administrators) invites not yet accepted.
+The lead caregiver or an administrator invites someone by email address with an access level, gets a link to send from their own phone (Share or Copy), and can copy an invite's link again, cancel it, change a member's access, or remove a member.
+Nobody can change their own access or the lead caregiver's.
 - **Invite links** (`?group=<groupId>&invite=<inviteId>`) open a join screen after signing in: who invited you to whose care team, and **Join**.
 Only someone signed in with the invited email address, confirmed, can use it, and joining uses it up.
 - **Your care teams**: switch between the care teams you're on, or start another.
@@ -221,7 +228,8 @@ The design canvas linked above has every screen on phone and computer, the reaso
 
 [docs/roadmap.md](docs/roadmap.md) has suggested approaches for each of these.
 
-- Access levels beyond lead caregiver and member: administrator, clinician, storyteller (editing only their own stories) and player (doc slides 4 and 6), handing over the lead, renaming or deleting a care team, and invites that expire.
+- Handing over the lead, renaming or deleting a care team, and invites that expire (doc slides 4 and 6).
+- The clinician's own tools (the eligibility survey, comments and approval) for the Clinician access level.
 - The setup questions about a clinician (slide 3).
 - The eligibility survey.
 - Editing a story's title, storyteller or relationship after it's saved.
@@ -257,8 +265,9 @@ The README explains how to run a fork on its own Firebase project.
 ```
 groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt,
                                          hearingAid (once answered)
-groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
-groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
+groups/{groupId}/members/{uid}           uid, name, email, joinedAt, access (the access level),
+                                         invite (the invite accepted, if any)
+groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, access, createdAt
 groups/{groupId}/sessions/{id}           playedBy, affect, setNumber, day ("YYYY-MM-DD"), startedAt,
                                          prepared (checklist keys), awake (signs of being awake),
                                          endedAt (once the set has played to the end)
@@ -287,12 +296,14 @@ A full treatment (4 sets of about 10 minutes) is roughly 20 MB, so the free 1 Gi
 ### Security rules
 
 Every request must be signed in.
-Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
-Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
+Only a group's members can read the group, its members and its stories.
+What else a member can do depends on their access level (`access` on their member document; none means "stories"): everyone but players saves, moves, deletes and restores stories, and everyone but "stories" members plays sets.
+Only the owner and administrators create, list and cancel invites, change members' access and remove members; nobody changes their own access or the owner's, and the owner can't leave or be removed.
+Someone joins with exactly the access level of their invite.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
 Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
-Members save a session for each set they play, once, and the player adds `endedAt` when it plays to the end; nothing else about a session changes, nobody can delete one, and its checklist answers must come from fixed lists.
-Any member can answer the hearing aid question once (`hearingAid` on the group); it can't change after that.
+Members who can play save a session for each set they play, once, and the player adds `endedAt` when it plays to the end; nothing else about a session changes, nobody can delete one, and its checklist answers must come from fixed lists.
+Any member who can play answers the hearing aid question once (`hearingAid` on the group); it can't change after that.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
 The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).
 Everything else is denied.
@@ -323,7 +334,8 @@ Everything else is denied.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
 - `src/auth.js`: signing in and out (Google, email and password), the `useUser()` hook, and friendly sign-in error messages.
-- `src/group.js`: care teams in Firestore: listing yours, starting one, members, invites, joining, removing and leaving.
+- `src/group.js`: care teams in Firestore: listing yours, starting one, members, invites, joining, access levels, removing and leaving.
+- `src/access.js`: the 4 access levels and what each allows.
 - `src/SignIn.jsx`: the sign-in screen (with its welcome panel on a computer).
 - `src/JoinGroup.jsx`: the screen an invite link opens.
 - `src/CareTeam.jsx`: the Care team screen and the Invite someone screen.

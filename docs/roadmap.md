@@ -6,13 +6,11 @@ These are suggestions, not decisions: check with the project owner before starti
 
 ## 1. Access levels and the rest of setup
 
-Sign-in, care teams (groups), invite links, and two roles (the lead caregiver who owns a group, and members) are built.
+Sign-in, care teams (groups), invite links, the lead caregiver who owns a group, and the 4 access levels (slide 4, `src/access.js`) are built.
 What the project doc asks for beyond that:
 
-- **Access levels** (slide 4): administrator, clinician, storyteller and player, instead of one "member" role.
-Add an `access` field to `groups/{groupId}/members/{uid}` and to invites, check it in `firestore.rules` for each action, and let the lead caregiver change it.
-The design canvas's first accounts proposal had these screens and a "Who can do what" table (storytellers edit only their own stories, so stories need a `recordedBy` uid).
-Nobody may raise their own access; add a rules test for every rule.
+- **The clinician's tools** for the Clinician level: the eligibility survey, comments and approval (sections 2 and 3).
+Use `canManage`-style helpers in `firestore.rules` for each.
 - **Handing over the lead** and changing the clinician (slide 4).
 - **The setup questions** (slide 3): the lead caregiver's relationship to the patient, and whether a clinician takes part.
 - **Invites that expire** (for example after 14 days), checked by the rules with an `expiresAt` timestamp.

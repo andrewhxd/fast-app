@@ -1,14 +1,37 @@
 import { useEffect, useState } from 'react';
 import NavBar from './NavBar.jsx';
+import { ACCESS, accessDoes, accessLabel, canManage } from './access.js';
 import {
-  cancelInvite, createInvite, inviteLink, listInvites, listMembers, normalizeEmail, removeMember,
+  cancelInvite, createInvite, inviteLink, listInvites, listMembers, normalizeEmail, removeMember, setMemberAccess,
 } from './group.js';
-import { CopyIcon, MoreIcon, PlusIcon, ShareIcon } from './icons.jsx';
+import { CheckIcon, CopyIcon, MoreIcon, PlusIcon, ShareIcon } from './icons.jsx';
 
 // A person's initials in a colored circle, e.g. "AS" for Ann Smith.
 export function Avatar({ name, index = 0 }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join('');
   return <span className={`avatar avatar-${index % 4}`} aria-hidden="true">{initials}</span>;
+}
+
+// "Invite people and manage..." from "invite people and manage...".
+const sentence = (text) => text[0].toUpperCase() + text.slice(1);
+
+// The 4 access levels to pick from, each with what it can do.
+function AccessChoice({ value, onChange, name }) {
+  return (
+    <fieldset className="checklist">
+      <legend className="field-label">What can they do?</legend>
+      {ACCESS.map((level) => (
+        <label key={level.key} className={`check-row${value === level.key ? ' on' : ''}`}>
+          <input type="radio" name={name} checked={value === level.key} onChange={() => onChange(level.key)} />
+          <span className="check-box round" aria-hidden="true"><CheckIcon /></span>
+          <span className="access-text">
+            <strong>{level.label}</strong>
+            <span>{sentence(level.does)}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
 }
 
 // "Oct 26"
@@ -24,21 +47,24 @@ async function copyLink(url) {
   }
 }
 
-// The Care team screen: who's on the team, and for the lead caregiver, inviting and removing people.
-// Members can leave; the lead caregiver can't, since every team needs one.
+// The Care team screen: who's on the team and what each person can do. The lead caregiver and
+// administrators invite people, change their access and remove them. Members can leave; the lead
+// caregiver can't, since every team needs one.
 export default function CareTeam({ user, group, notice: startNotice, menuButton, backButton, onInvite, onLeft }) {
   const isOwner = group.ownerId === user.uid;
+  const manager = canManage(group.access);
   const [members, setMembers] = useState(null);
   const [invites, setInvites] = useState(null);
   const [open, setOpen] = useState(null); // the row whose options are showing: a uid or an invite id
   const [confirming, setConfirming] = useState(null); // a member uid to remove, or 'leave'
+  const [changing, setChanging] = useState(null); // { uid, access } while changing someone's access
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(startNotice);
 
   async function load() {
     try {
-      const [people, pending] = await Promise.all([listMembers(group), isOwner ? listInvites(group.id) : []]);
+      const [people, pending] = await Promise.all([listMembers(group), manager ? listInvites(group.id) : []]);
       setMembers(people);
       setInvites(pending);
     } catch (err) {
@@ -58,6 +84,7 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
       setNotice(message);
       setOpen(null);
       setConfirming(null);
+      setChanging(null);
       await load();
     } catch (err) {
       setError(`That didn't work: ${err.message}`);
@@ -87,13 +114,15 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
   const toggle = (id) => {
     setOpen(open === id ? null : id);
     setConfirming(null);
+    setChanging(null);
   };
   const owner = members?.find((m) => m.uid === group.ownerId);
   const others = members?.filter((m) => m.uid !== group.ownerId) ?? [];
 
   function personRow(person, index) {
     const you = person.uid === user.uid;
-    const canRemove = isOwner && !you;
+    const lead = person.uid === group.ownerId;
+    const canChange = manager && !you && !lead;
     return (
       <div key={person.uid}>
         <div className="person-row">
@@ -103,9 +132,10 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
               {person.name}
               {you && <span className="muted"> (you)</span>}
             </strong>
+            <span>{lead ? 'Lead caregiver' : accessLabel(person.access)}</span>
             <span>{person.email}</span>
           </span>
-          {canRemove && (
+          {canChange && (
             <button
               className="more-button"
               onClick={() => toggle(person.uid)}
@@ -117,7 +147,23 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
           )}
         </div>
         {open === person.uid && (
-          confirming === person.uid ? (
+          changing?.uid === person.uid ? (
+            <div className="slot-confirm change-access">
+              <AccessChoice value={changing.access} onChange={(access) => setChanging({ uid: person.uid, access })} name={`access-${person.uid}`} />
+              <div className="confirm">
+                <div className="buttons">
+                  <button
+                    className="pill pill-primary"
+                    onClick={() => run(() => setMemberAccess(group.id, person.uid, changing.access), `${person.name} now has ${accessLabel(changing.access)} access.`)}
+                    disabled={busy || changing.access === person.access}
+                  >
+                    Save
+                  </button>
+                  <button className="pill pill-white" onClick={() => setChanging(null)} disabled={busy}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          ) : confirming === person.uid ? (
             <div className="confirm slot-confirm">
               <p>Remove {person.name}? They won&apos;t see or record {group.name}&apos;s stories anymore. Their stories stay.</p>
               <div className="buttons">
@@ -128,8 +174,9 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
               </div>
             </div>
           ) : (
-            <div className="story-actions single">
-              <button className="action delete" onClick={() => setConfirming(person.uid)}>Remove from care team</button>
+            <div className="story-actions double">
+              <button className="action edit" onClick={() => setChanging({ uid: person.uid, access: person.access })}>Change access</button>
+              <button className="action delete" onClick={() => setConfirming(person.uid)}>Remove</button>
             </div>
           )
         )}
@@ -143,8 +190,9 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
       <main className="content team-page">
         <h1 className="page-title">{group.name}&apos;s care team</h1>
         <p className="lead">
-          Everyone here can record, listen to, edit and move {group.name}&apos;s stories.
-          {isOwner ? ' As the lead caregiver, you invite and remove people.' : ''}
+          {isOwner
+            ? "As the lead caregiver, you invite people, choose what each person can do, and remove them."
+            : `With ${accessLabel(group.access)} access, you can ${accessDoes(group.access)}.`}
         </p>
         {notice && <p className="notice" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
@@ -163,7 +211,7 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
               <div className="story-list">
                 {others.map((person, i) => personRow(person, i + 1))}
                 {others.length === 0 && <p className="add-row muted">Nobody else yet.</p>}
-                {isOwner && (
+                {manager && (
                   <button className="add-row" onClick={onInvite}>
                     <PlusIcon />
                     Invite someone
@@ -172,7 +220,7 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
               </div>
             </section>
 
-            {isOwner && invites.length > 0 && (
+            {manager && invites.length > 0 && (
               <section className="group-section">
                 <h2 className="group-label">Invited, not joined yet</h2>
                 <div className="story-list">
@@ -182,7 +230,7 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
                         <span className="avatar avatar-pending" aria-hidden="true">?</span>
                         <span className="person-text">
                           <strong>{invite.email}</strong>
-                          <span>Invited {shortDate(invite.createdAt)}</span>
+                          <span>{accessLabel(invite.access)} · Invited {shortDate(invite.createdAt)}</span>
                         </span>
                         <button
                           className="more-button"
@@ -233,6 +281,7 @@ export default function CareTeam({ user, group, notice: startNotice, menuButton,
 // The app can't send email itself on the free plan, and a link works by text message too.
 export function InviteSomeone({ user, group, backButton, menuButton, onDone }) {
   const [email, setEmail] = useState('');
+  const [access, setAccess] = useState('stories');
   const [link, setLink] = useState(null); // { email, url } once the invite exists
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -250,8 +299,8 @@ export function InviteSomeone({ user, group, backButton, menuButton, onDone }) {
         return;
       }
       const existing = invites.find((invite) => invite.email === address);
-      const inviteId = existing?.id ?? await createInvite(group, user, address);
-      setNotice(existing ? `${address} was already invited, so this is the same link.` : '');
+      const inviteId = existing?.id ?? await createInvite(group, user, address, access);
+      setNotice(existing ? `${address} was already invited, with ${accessLabel(existing.access)} access, so this is the same link.` : '');
       setLink({ email: address, url: inviteLink(group.id, inviteId) });
     } catch (err) {
       setError(`Could not create the invite: ${err.message}`);
@@ -315,7 +364,7 @@ export function InviteSomeone({ user, group, backButton, menuButton, onDone }) {
       <main className="content team-page">
         <h1 className="page-title">Invite someone</h1>
         <p className="lead">
-          They&apos;ll be able to record, listen to, edit and move {group.name}&apos;s stories, like everyone on the care team.
+          Choose what they can do on {group.name}&apos;s care team. You can change it later.
         </p>
         <form className="sign-in-form" onSubmit={submit}>
           <label className="field">
@@ -331,6 +380,7 @@ export function InviteSomeone({ user, group, backButton, menuButton, onDone }) {
             />
             <span className="hint">They sign in with this address to join.</span>
           </label>
+          <AccessChoice value={access} onChange={setAccess} name="invite-access" />
           {error && <p className="error" role="alert">{error}</p>}
           <button className="pill pill-primary" type="submit" disabled={busy}>Create invite</button>
         </form>

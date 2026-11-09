@@ -1,6 +1,7 @@
 // Tests for firestore.rules, against the Firestore emulator: `npm run test:rules`.
-// Each test starts from an empty database with one group ("sam", owned by Ann, with Jeff as a member)
-// and checks what each person can and can't do.
+// Each test starts from an empty database with one group ("sam", owned by Ann) and checks what each
+// person can and can't do. Jeff joined before access levels, so he can record and edit stories; Ivy is
+// an administrator, Cleo a clinician and Pat can only play.
 
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -16,6 +17,9 @@ const ANN = { uid: 'ann', email: 'ann@example.com', email_verified: true }; // o
 const JEFF = { uid: 'jeff', email: 'jeff@example.com', email_verified: true }; // member of "sam"
 const MIA = { uid: 'mia', email: 'Mia@Example.com', email_verified: true }; // not a member
 const DAVE = { uid: 'dave', email: 'dave@example.com', email_verified: false }; // unconfirmed email
+const IVY = { uid: 'ivy', email: 'ivy@example.com', email_verified: true }; // administrator of "sam"
+const CLEO = { uid: 'cleo', email: 'cleo@example.com', email_verified: true }; // clinician of "sam"
+const PAT = { uid: 'pat', email: 'pat@example.com', email_verified: true }; // can only play, in "sam"
 
 let env;
 
@@ -31,8 +35,10 @@ after(() => env.cleanup());
 const as = ({ uid, ...token }) => env.authenticatedContext(uid, token).firestore();
 const anonymous = () => env.unauthenticatedContext().firestore();
 
+// A member document; fields set to undefined are left out.
 function member(person, extra = {}) {
-  return { uid: person.uid, name: person.uid, email: person.email.toLowerCase(), joinedAt: serverTimestamp(), ...extra };
+  const fields = { uid: person.uid, name: person.uid, email: person.email.toLowerCase(), joinedAt: serverTimestamp(), ...extra };
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
 }
 
 beforeEach(async () => {
@@ -42,8 +48,11 @@ beforeEach(async () => {
     await setDoc(doc(db, 'groups/sam'), { id: 'sam', name: 'Sam Smith', ownerId: 'ann', createdAt: new Date(), updatedAt: new Date() });
     await setDoc(doc(db, 'groups/sam/members/ann'), { uid: 'ann', name: 'Ann', email: 'ann@example.com', joinedAt: new Date() });
     await setDoc(doc(db, 'groups/sam/members/jeff'), { uid: 'jeff', name: 'Jeff', email: 'jeff@example.com', joinedAt: new Date() });
+    for (const [person, access] of [[IVY, 'administrator'], [CLEO, 'clinician'], [PAT, 'player']]) {
+      await setDoc(doc(db, `groups/sam/members/${person.uid}`), { uid: person.uid, name: person.uid, email: person.email, joinedAt: new Date(), access });
+    }
     await setDoc(doc(db, 'groups/sam/invites/inv1'), {
-      email: 'mia@example.com', groupName: 'Sam Smith', invitedBy: 'ann', invitedByName: 'Ann', createdAt: new Date(),
+      email: 'mia@example.com', groupName: 'Sam Smith', invitedBy: 'ann', invitedByName: 'Ann', access: 'player', createdAt: new Date(),
     });
     await setDoc(doc(db, 'groups/sam/invites/inv2'), {
       email: 'dave@example.com', groupName: 'Sam Smith', invitedBy: 'ann', invitedByName: 'Ann', createdAt: new Date(),
@@ -79,11 +88,19 @@ describe('starting a group', () => {
     batch.set(doc(db, `groups/${id}`), {
       id, name: 'Rosa Diaz', ownerId: person.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...fields,
     });
-    batch.set(doc(db, `groups/${id}/members/${person.uid}`), member(person));
+    batch.set(doc(db, `groups/${id}/members/${person.uid}`), member(person, { access }));
     return batch.commit();
   }
+  let access = 'administrator';
 
   test('anyone signed in can start a group, as its owner', () => assertSucceeds(start(as(MIA), MIA, 'rosa')));
+  test('the owner is an administrator', async () => {
+    access = 'player';
+    await assertFails(start(as(MIA), MIA, 'rosa'));
+    access = undefined; // an older version of the app, which leaves the level out
+    await assertSucceeds(start(as(MIA), MIA, 'rosa'));
+    access = 'administrator';
+  });
   test('not signed out', () => assertFails(start(anonymous(), MIA, 'rosa')));
   test('not for someone else', () => assertFails(start(as(MIA), MIA, 'rosa', { ownerId: 'ann' })));
   test('not without the owner joining', () => assertFails(setDoc(doc(as(MIA), 'groups/rosa'), {
@@ -110,11 +127,27 @@ describe('reading groups and members', () => {
 
 describe('invites', () => {
   const invite = (fields = {}) => ({
-    email: 'rosa@example.com', groupName: 'Sam Smith', invitedBy: 'ann', invitedByName: 'Ann', createdAt: serverTimestamp(), ...fields,
+    email: 'rosa@example.com', groupName: 'Sam Smith', invitedBy: 'ann', invitedByName: 'Ann', access: 'stories', createdAt: serverTimestamp(), ...fields,
   });
 
   test('the owner invites', () => assertSucceeds(setDoc(doc(as(ANN), 'groups/sam/invites/new'), invite())));
   test('members cannot', () => assertFails(setDoc(doc(as(JEFF), 'groups/sam/invites/new'), invite({ invitedBy: 'jeff' }))));
+  test('administrators invite, list and cancel invites', async () => {
+    await assertSucceeds(setDoc(doc(as(IVY), 'groups/sam/invites/new'), invite({ invitedBy: 'ivy', access: 'administrator' })));
+    await assertSucceeds(getDocs(collection(as(IVY), 'groups/sam/invites')));
+    await assertSucceeds(deleteDoc(doc(as(IVY), 'groups/sam/invites/inv1')));
+  });
+  test('clinicians and players cannot', async () => {
+    await assertFails(setDoc(doc(as(CLEO), 'groups/sam/invites/new'), invite({ invitedBy: 'cleo' })));
+    await assertFails(setDoc(doc(as(PAT), 'groups/sam/invites/new'), invite({ invitedBy: 'pat' })));
+    await assertFails(getDocs(collection(as(CLEO), 'groups/sam/invites')));
+  });
+  test('an invite gives one of the 4 access levels', () =>
+    assertFails(setDoc(doc(as(ANN), 'groups/sam/invites/new'), invite({ access: 'owner' }))));
+  test('one without a level, from an older version of the app, gives Record and edit stories', () => {
+    const { access, ...withoutAccess } = invite();
+    return assertSucceeds(setDoc(doc(as(ANN), 'groups/sam/invites/new'), withoutAccess));
+  });
   test('the email address must be lowercase', () =>
     assertFails(setDoc(doc(as(ANN), 'groups/sam/invites/new'), invite({ email: 'Rosa@example.com' }))));
   test('the group name must match', () =>
@@ -131,10 +164,19 @@ describe('invites', () => {
 describe('joining with an invite', () => {
   function join(db, person, inviteId, { useUp = true } = {}) {
     const batch = writeBatch(db);
-    batch.set(doc(db, `groups/sam/members/${person.uid}`), member(person, { invite: inviteId }));
+    batch.set(doc(db, `groups/sam/members/${person.uid}`), member(person, { invite: inviteId, access }));
     if (useUp) batch.delete(doc(db, `groups/sam/invites/${inviteId}`));
     return batch.commit();
   }
+  let access = 'player'; // inv1's level
+
+  test("they join with the invite's access level, not another", async () => {
+    access = 'administrator';
+    await assertFails(join(as(MIA), MIA, 'inv1'));
+    access = undefined; // leaving it out would mean Record and edit stories
+    await assertFails(join(as(MIA), MIA, 'inv1'));
+    access = 'player';
+  });
 
   test('the person invited joins, using it up', async () => {
     await assertSucceeds(join(as(MIA), MIA, 'inv1'));
@@ -152,7 +194,7 @@ describe('joining with an invite', () => {
   test('not with a made-up email address in the member document', () => {
     const db = as(MIA);
     const batch = writeBatch(db);
-    batch.set(doc(db, 'groups/sam/members/mia'), { ...member(MIA, { invite: 'inv1' }), email: 'ann@example.com' });
+    batch.set(doc(db, 'groups/sam/members/mia'), { ...member(MIA, { invite: 'inv1', access: 'player' }), email: 'ann@example.com' });
     batch.delete(doc(db, 'groups/sam/invites/inv1'));
     return assertFails(batch.commit());
   });
@@ -164,6 +206,10 @@ describe('removing and leaving', () => {
   test('a member cannot remove the owner', () => assertFails(deleteDoc(doc(as(JEFF), 'groups/sam/members/ann'))));
   test('the owner cannot leave', () => assertFails(deleteDoc(doc(as(ANN), 'groups/sam/members/ann'))));
   test('outsiders cannot remove anyone', () => assertFails(deleteDoc(doc(as(MIA), 'groups/sam/members/jeff'))));
+  test('an administrator removes a member', () => assertSucceeds(deleteDoc(doc(as(IVY), 'groups/sam/members/jeff'))));
+  test('but not the owner', () => assertFails(deleteDoc(doc(as(IVY), 'groups/sam/members/ann'))));
+  test('members who are not administrators cannot remove others', () =>
+    assertFails(deleteDoc(doc(as(CLEO), 'groups/sam/members/jeff'))));
   test('a removed member loses access', async () => {
     await assertSucceeds(deleteDoc(doc(as(ANN), 'groups/sam/members/jeff')));
     await assertFails(getDoc(doc(as(JEFF), 'treatments/demo/stories/s1')));
@@ -298,43 +344,50 @@ describe('deleting and restoring stories', () => {
 describe('hearing aid', () => {
   const answer = (person, fields) => updateDoc(doc(as(person), 'groups/sam'), fields);
 
-  test('a member answers it', () => assertSucceeds(answer(JEFF, { hearingAid: true })));
+  test('a member who plays answers it', () => assertSucceeds(answer(PAT, { hearingAid: true })));
   test('others cannot', () => assertFails(answer(MIA, { hearingAid: true })));
-  test('it must be yes or no', () => assertFails(answer(JEFF, { hearingAid: 'yes' })));
-  test('nothing else changes with it', () => assertFails(answer(JEFF, { hearingAid: false, name: 'Sam' })));
+  test('not someone who only records', () => assertFails(answer(JEFF, { hearingAid: true })));
+  test('it must be yes or no', () => assertFails(answer(PAT, { hearingAid: 'yes' })));
+  test('nothing else changes with it', () => assertFails(answer(PAT, { hearingAid: false, name: 'Sam' })));
   test('once answered, it cannot change', async () => {
-    await assertSucceeds(answer(JEFF, { hearingAid: false }));
+    await assertSucceeds(answer(PAT, { hearingAid: false }));
     await assertFails(answer(ANN, { hearingAid: true }));
   });
 });
 
 describe('playing sessions', () => {
   const session = (fields = {}) => ({
-    playedBy: 'jeff', affect: 'happy', setNumber: 2, day: '2026-11-09', startedAt: serverTimestamp(),
+    playedBy: 'pat', affect: 'happy', setNumber: 2, day: '2026-11-09', startedAt: serverTimestamp(),
     prepared: ['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'], awake: ['eyesOpen', 'turnsToSound'], ...fields,
   });
   const save = (person, fields) => setDoc(doc(as(person), 'groups/sam/sessions/new'), session(fields));
   const saved = () => env.withSecurityRulesDisabled((context) =>
     setDoc(doc(context.firestore(), 'groups/sam/sessions/old'), session({ startedAt: new Date() })));
 
-  test('a member saves one they played', () => assertSucceeds(save(JEFF)));
+  test('a member who plays saves one they played', () => assertSucceeds(save(PAT)));
   test('with the hearing aid checked, for a patient who uses one', () =>
-    assertSucceeds(save(JEFF, { prepared: ['hearingAid', 'soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'] })));
-  test('with no signs of being awake', () => assertSucceeds(save(JEFF, { awake: [] })));
+    assertSucceeds(save(PAT, { prepared: ['hearingAid', 'soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'] })));
+  test('with no signs of being awake', () => assertSucceeds(save(PAT, { awake: [] })));
   test('others cannot', () => assertFails(save(MIA, { playedBy: 'mia' })));
-  test('not for someone else', () => assertFails(save(JEFF, { playedBy: 'ann' })));
-  test('every checklist item must be ticked', () =>
-    assertFails(save(JEFF, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet'] })));
-  test('no unknown checklist items', () =>
-    assertFails(save(JEFF, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView', 'other'] })));
-  test('no unknown signs of being awake', () => assertFails(save(JEFF, { awake: ['eyesOpen', 'smiles'] })));
-  test('the day must be a date', () => assertFails(save(JEFF, { day: 'today' })));
-  test('it starts now', () => assertFails(save(JEFF, { startedAt: new Date('2026-01-01') })));
-  test('the set must be one of the 4', async () => {
-    await assertFails(save(JEFF, { affect: 'calm' }));
-    await assertFails(save(JEFF, { setNumber: 3 }));
+  test('the owner, administrators and clinicians play too', async () => {
+    await assertSucceeds(setDoc(doc(as(ANN), 'groups/sam/sessions/a'), session({ playedBy: 'ann' })));
+    await assertSucceeds(setDoc(doc(as(IVY), 'groups/sam/sessions/b'), session({ playedBy: 'ivy' })));
+    await assertSucceeds(setDoc(doc(as(CLEO), 'groups/sam/sessions/c'), session({ playedBy: 'cleo' })));
   });
-  test('no other fields', () => assertFails(save(JEFF, { note: 'hi' })));
+  test('not someone who only records', () => assertFails(save(JEFF, { playedBy: 'jeff' })));
+  test('not for someone else', () => assertFails(save(PAT, { playedBy: 'ann' })));
+  test('every checklist item must be ticked', () =>
+    assertFails(save(PAT, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet'] })));
+  test('no unknown checklist items', () =>
+    assertFails(save(PAT, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView', 'other'] })));
+  test('no unknown signs of being awake', () => assertFails(save(PAT, { awake: ['eyesOpen', 'smiles'] })));
+  test('the day must be a date', () => assertFails(save(PAT, { day: 'today' })));
+  test('it starts now', () => assertFails(save(PAT, { startedAt: new Date('2026-01-01') })));
+  test('the set must be one of the 4', async () => {
+    await assertFails(save(PAT, { affect: 'calm' }));
+    await assertFails(save(PAT, { setNumber: 3 }));
+  });
+  test('no other fields', () => assertFails(save(PAT, { note: 'hi' })));
   test("members read a day's sessions", async () => {
     await saved();
     await assertSucceeds(getDocs(query(collection(as(ANN), 'groups/sam/sessions'), where('day', '==', '2026-11-09'))));
@@ -345,14 +398,14 @@ describe('playing sessions', () => {
   });
   test('nothing else about a session changes, and nobody deletes one', async () => {
     await saved();
-    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { awake: [] }));
-    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp(), awake: [] }));
-    await assertFails(deleteDoc(doc(as(JEFF), 'groups/sam/sessions/old')));
+    await assertFails(updateDoc(doc(as(PAT), 'groups/sam/sessions/old'), { awake: [] }));
+    await assertFails(updateDoc(doc(as(PAT), 'groups/sam/sessions/old'), { endedAt: serverTimestamp(), awake: [] }));
+    await assertFails(deleteDoc(doc(as(PAT), 'groups/sam/sessions/old')));
   });
   test('the player marks it played to the end, once', async () => {
     await saved();
-    await assertSucceeds(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
-    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as(PAT), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as(PAT), 'groups/sam/sessions/old'), { endedAt: serverTimestamp() }));
   });
   test('only the player marks it ended', async () => {
     await saved();
@@ -360,7 +413,44 @@ describe('playing sessions', () => {
   });
   test('it ends now', async () => {
     await saved();
-    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { endedAt: new Date('2026-01-01') }));
+    await assertFails(updateDoc(doc(as(PAT), 'groups/sam/sessions/old'), { endedAt: new Date('2026-01-01') }));
   });
-  test('a new session has not ended yet', () => assertFails(save(JEFF, { endedAt: serverTimestamp() })));
+  test('a new session has not ended yet', () => assertFails(save(PAT, { endedAt: serverTimestamp() })));
+});
+
+describe('access levels', () => {
+  const setAccess = (person, uid, access, extra = {}) => updateDoc(doc(as(person), `groups/sam/members/${uid}`), { access, ...extra });
+
+  test("the owner changes someone's access", () => assertSucceeds(setAccess(ANN, 'jeff', 'player')));
+  test("an administrator changes someone's access", () => assertSucceeds(setAccess(IVY, 'pat', 'clinician')));
+  test('an administrator can make someone else an administrator', () => assertSucceeds(setAccess(IVY, 'jeff', 'administrator')));
+  test('nobody changes their own access', async () => {
+    await assertFails(setAccess(IVY, 'ivy', 'clinician'));
+    await assertFails(setAccess(PAT, 'pat', 'administrator'));
+  });
+  test("nobody changes the owner's", () => assertFails(setAccess(IVY, 'ann', 'player')));
+  test('members who are not administrators cannot change anyone', async () => {
+    await assertFails(setAccess(CLEO, 'pat', 'administrator'));
+    await assertFails(setAccess(JEFF, 'pat', 'stories'));
+  });
+  test('only to one of the 4 levels', () => assertFails(setAccess(ANN, 'jeff', 'owner')));
+  test('nothing else changes with it', () => assertFails(setAccess(ANN, 'jeff', 'player', { name: 'Jeffrey' })));
+
+  test('players listen to the stories', async () => {
+    await assertSucceeds(getDocs(query(collection(as(PAT), 'treatments/demo/stories'), where('group', '==', 'sam'))));
+    await assertSucceeds(getDoc(doc(as(PAT), 'treatments/demo/stories/s1/chunks/0')));
+  });
+  test('but cannot record, move or delete them', async () => {
+    await assertFails(saveStory(as(PAT), 's2', 100));
+    await assertFails(updateDoc(doc(as(PAT), 'treatments/demo/stories/s1'), { setNumber: 2 }));
+    await assertFails(updateDoc(doc(as(PAT), 'treatments/demo/stories/s1'), { deletedAt: serverTimestamp(), deletedBy: 'pat' }));
+  });
+  test('clinicians and administrators record', async () => {
+    await assertSucceeds(saveStory(as(CLEO), 's2', 100));
+    await assertSucceeds(saveStory(as(IVY), 's3', 100));
+  });
+  test('a change of access applies straight away', async () => {
+    await assertSucceeds(setAccess(ANN, 'jeff', 'player'));
+    await assertFails(saveStory(as(JEFF), 's2', 100));
+  });
 });

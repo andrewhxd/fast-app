@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import CareTeam, { InviteSomeone } from './CareTeam.jsx';
 import YourCareTeams, { StartCareTeam } from './CareTeams.jsx';
+import { canManage, canPlay, canRecord } from './access.js';
 import EditStory from './EditStory.jsx';
 import Home from './Home.jsx';
 import JoinGroup from './JoinGroup.jsx';
@@ -77,13 +78,17 @@ function firstScreen() {
   return screen;
 }
 
+// `allowed(access)` hides what someone's access level doesn't let them do (see access.js).
 const MENU = [
   { label: 'Home', screen: HOME, icon: <HomeIcon /> },
-  { label: 'Record a Story', screen: SETS_SCREEN, icon: <MicIcon /> },
-  { label: 'Listen and Edit Stories', sidebarLabel: 'Listen', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
-  { label: 'Play Stories', sidebarLabel: 'Play', screen: PLAY_SCREEN, icon: <PlayOutlineIcon /> },
+  { label: 'Record a Story', screen: SETS_SCREEN, icon: <MicIcon />, allowed: canRecord },
+  { label: 'Listen and Edit Stories', readOnlyLabel: 'Listen to Stories', sidebarLabel: 'Listen', screen: STORIES_SCREEN, icon: <HeadphonesIcon /> },
+  { label: 'Play Stories', sidebarLabel: 'Play', screen: PLAY_SCREEN, icon: <PlayOutlineIcon />, allowed: canPlay },
   { label: 'Care team', screen: TEAM_SCREEN, icon: <PeopleIcon /> },
 ];
+
+// The screens each access level needs, beyond the ones everyone has.
+const NEEDS = { sets: canRecord, record: canRecord, edit: canRecord, play: canPlay, invite: canManage };
 
 // The menu item each screen belongs to: recording starts from the sets, editing from Listen,
 // and inviting, switching and starting care teams from Care team.
@@ -357,6 +362,8 @@ function CareApp({ user }) {
   if (!group.groupId) return <Loading />;
 
   const summary = activeStories && summarizeSets(activeStories);
+  const access = currentGroup?.access; // 'lead' or an access level; undefined outside a care team
+  const menu = MENU.filter((item) => !item.allowed || item.allowed(access));
   const recordInSet = (affect, setNumber) => goTo({ name: 'record', affect, setNumber });
   const backButton = (
     <button className="nav-button desktop-hidden" onClick={goBack}>
@@ -391,6 +398,14 @@ function CareApp({ user }) {
   } else if (!currentGroup) {
     // A link to a group this person isn't in (or was removed from).
     content = teamsScreen(group.error || "You aren't on that care team, so here are the ones you're on.");
+  } else if (NEEDS[screen.name] && !NEEDS[screen.name](access)) {
+    // e.g. Back to a screen from before their access changed
+    content = (
+      <>
+        <NavBar left={backButton} right={menuButton} />
+        <main className="content"><p className="error" role="alert">Your access on this care team doesn&apos;t include this.</p></main>
+      </>
+    );
   } else if (screen.name === 'team') {
     content = (
       <CareTeam
@@ -405,11 +420,7 @@ function CareApp({ user }) {
       />
     );
   } else if (screen.name === 'invite') {
-    content = currentGroup.ownerId === user.uid ? (
-      <InviteSomeone user={user} group={currentGroup} backButton={backButton} menuButton={menuButton} onDone={goBack} />
-    ) : (
-      <main className="content"><p className="error" role="alert">Only the lead caregiver can invite people.</p></main>
-    );
+    content = <InviteSomeone user={user} group={currentGroup} backButton={backButton} menuButton={menuButton} onDone={goBack} />;
   } else if (screen.name === 'home') {
     content = (
       <Home
@@ -419,10 +430,10 @@ function CareApp({ user }) {
         notice={notice}
         summary={summary}
         menuButton={menuButton}
-        onRecord={() => goTo(SETS_SCREEN)}
-        onRecordInSet={recordInSet}
+        onRecord={canRecord(access) ? () => goTo(SETS_SCREEN) : null}
+        onRecordInSet={canRecord(access) ? recordInSet : null}
         onListen={() => goTo(STORIES_SCREEN)}
-        onPlay={() => goTo(PLAY_SCREEN)}
+        onPlay={canPlay(access) ? () => goTo(PLAY_SCREEN) : null}
       />
     );
   } else if (!summary) {
@@ -441,6 +452,7 @@ function CareApp({ user }) {
         backButton={backButton}
         onChanged={storiesChanged}
         onClearNotice={() => setNotice('')}
+        canEdit={canRecord(access)}
         onRecord={recordInSet}
         onEdit={(story) => goTo({ name: 'edit', storyId: story.id })}
       />
@@ -484,7 +496,7 @@ function CareApp({ user }) {
   return (
     <div className="screen">
       <Sidebar
-        items={MENU}
+        items={menu}
         current={section}
         locked={focused}
         lockedHint={screen.name === 'play' ? 'Finish or cancel this session to leave.' : 'Finish or cancel this story to leave.'}
@@ -507,13 +519,13 @@ function CareApp({ user }) {
               <strong>{account.name}</strong>
               <span>{account.email}</span>
             </div>
-            {MENU.map((item) => (
+            {menu.map((item) => (
               <button
                 key={item.label}
                 className={item.screen.name === section ? 'current' : ''}
                 onClick={() => goTo(item.screen)}
               >
-                {item.label}
+                {!canRecord(access) && item.readOnlyLabel ? item.readOnlyLabel : item.label}
               </button>
             ))}
             <hr />
