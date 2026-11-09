@@ -120,7 +120,12 @@ If an edit makes a set too long, go to its list of stories to pick one to edit; 
 - The clinician can review stories and give comments. **Not built.**
 - "Regroup stories by affect", where the system builds sets that fit the target automatically. **Not built.**
 
-## Playing story sets to the patient (slides 22 to 27) - Not built
+## Playing story sets to the patient (slides 22 to 27) - Partly built
+
+Built: the Play button, the pre-session checklist, picking a random set not yet played today with its stories shuffled, playing it with the time left, and saving each session (who played it, when, which set, and the checklist answers).
+While the app is being tested, any set with stories can be played; the gate on approval comes later.
+The hearing aid question is asked the first time a care team plays, until the eligibility survey asks it.
+Not built: the post-session checklist, play instructions, progress on Home, the 2-hour warning and reminders.
 
 Scenario (slide 22):
 - Playing unlocks once all 4 sets are complete and approved.

@@ -294,3 +294,58 @@ describe('deleting and restoring stories', () => {
     await assertFails(softDelete(JEFF, { replacedBy: 's3' }));
   });
 });
+
+describe('hearing aid', () => {
+  const answer = (person, fields) => updateDoc(doc(as(person), 'groups/sam'), fields);
+
+  test('a member answers it', () => assertSucceeds(answer(JEFF, { hearingAid: true })));
+  test('others cannot', () => assertFails(answer(MIA, { hearingAid: true })));
+  test('it must be yes or no', () => assertFails(answer(JEFF, { hearingAid: 'yes' })));
+  test('nothing else changes with it', () => assertFails(answer(JEFF, { hearingAid: false, name: 'Sam' })));
+  test('once answered, it cannot change', async () => {
+    await assertSucceeds(answer(JEFF, { hearingAid: false }));
+    await assertFails(answer(ANN, { hearingAid: true }));
+  });
+});
+
+describe('playing sessions', () => {
+  const session = (fields = {}) => ({
+    playedBy: 'jeff', affect: 'happy', setNumber: 2, day: '2026-11-09', startedAt: serverTimestamp(),
+    prepared: ['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'], awake: ['eyesOpen', 'turnsToSound'], ...fields,
+  });
+  const save = (person, fields) => setDoc(doc(as(person), 'groups/sam/sessions/new'), session(fields));
+  const saved = () => env.withSecurityRulesDisabled((context) =>
+    setDoc(doc(context.firestore(), 'groups/sam/sessions/old'), session({ startedAt: new Date() })));
+
+  test('a member saves one they played', () => assertSucceeds(save(JEFF)));
+  test('with the hearing aid checked, for a patient who uses one', () =>
+    assertSucceeds(save(JEFF, { prepared: ['hearingAid', 'soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'] })));
+  test('with no signs of being awake', () => assertSucceeds(save(JEFF, { awake: [] })));
+  test('others cannot', () => assertFails(save(MIA, { playedBy: 'mia' })));
+  test('not for someone else', () => assertFails(save(JEFF, { playedBy: 'ann' })));
+  test('every checklist item must be ticked', () =>
+    assertFails(save(JEFF, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet'] })));
+  test('no unknown checklist items', () =>
+    assertFails(save(JEFF, { prepared: ['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView', 'other'] })));
+  test('no unknown signs of being awake', () => assertFails(save(JEFF, { awake: ['eyesOpen', 'smiles'] })));
+  test('the day must be a date', () => assertFails(save(JEFF, { day: 'today' })));
+  test('it starts now', () => assertFails(save(JEFF, { startedAt: new Date('2026-01-01') })));
+  test('the set must be one of the 4', async () => {
+    await assertFails(save(JEFF, { affect: 'calm' }));
+    await assertFails(save(JEFF, { setNumber: 3 }));
+  });
+  test('no other fields', () => assertFails(save(JEFF, { note: 'hi' })));
+  test("members read a day's sessions", async () => {
+    await saved();
+    await assertSucceeds(getDocs(query(collection(as(ANN), 'groups/sam/sessions'), where('day', '==', '2026-11-09'))));
+  });
+  test('others cannot', async () => {
+    await saved();
+    await assertFails(getDocs(query(collection(as(MIA), 'groups/sam/sessions'), where('day', '==', '2026-11-09'))));
+  });
+  test('a session never changes', async () => {
+    await saved();
+    await assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/old'), { awake: [] }));
+    await assertFails(deleteDoc(doc(as(JEFF), 'groups/sam/sessions/old')));
+  });
+});

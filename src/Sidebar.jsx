@@ -1,8 +1,9 @@
 // On a computer: the app's name and its places down the left side, always in view, with the
 // current care team and the signed-in account at the bottom.
 // Phones use the Menu button instead (the sidebar is hidden there by the stylesheet).
-// `locked` while recording or editing a story, so a click can't throw the work away.
-export default function Sidebar({ items, current, locked, onGo, groupName, account, onTeams, onSignOut }) {
+// `locked` while recording or editing a story, or playing a set, so a click can't throw the work away;
+// `lockedHint` says how to leave.
+export default function Sidebar({ items, current, locked, lockedHint, onGo, groupName, account, onTeams, onSignOut }) {
   return (
     <aside className="sidebar">
       <span className="wordmark">
@@ -23,7 +24,7 @@ export default function Sidebar({ items, current, locked, onGo, groupName, accou
           </button>
         ))}
       </nav>
-      {locked && <p className="hint sidebar-hint">Finish or cancel this story to leave.</p>}
+      {locked && <p className="hint sidebar-hint">{lockedHint}</p>}
 
       <div className="sidebar-footer">
         {groupName && (

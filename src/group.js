@@ -1,14 +1,16 @@
 import {
-  collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, writeBatch,
+  collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore/lite';
 import { displayName } from './auth.js';
 import { db } from './firebase.js';
 
 // A group is one patient's care team (the interface says "care team"; the project doc says "treatment"):
 //
-//   groups/{groupId}                   id, name (the patient's name), ownerId, createdAt, updatedAt
+//   groups/{groupId}                   id, name (the patient's name), ownerId, createdAt, updatedAt,
+//                                      and hearingAid once someone has answered it
 //   groups/{groupId}/members/{uid}     uid, name, email, joinedAt, and invite (the invite they accepted)
 //   groups/{groupId}/invites/{id}      email, groupName, invitedBy, invitedByName, createdAt
+//   groups/{groupId}/sessions/{id}     each time a set was played (see sessions.js)
 //
 // The owner is the lead caregiver: they start the group, invite people and remove them.
 // Every other member can record, listen to, edit and move the group's stories.
@@ -44,8 +46,14 @@ export async function listMyGroups(uid) {
   const groups = await Promise.all(groupIds.map((id) => getDoc(groupRef(id))));
   return groups
     .filter((d) => d.exists())
-    .map((d) => ({ id: d.id, name: d.data().name, ownerId: d.data().ownerId }))
+    .map((d) => ({ id: d.id, name: d.data().name, ownerId: d.data().ownerId, hearingAid: d.data().hearingAid }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Whether the patient uses a hearing aid (or another hearing accommodation), asked the first time
+// someone plays a set. It's answered once per care team; the eligibility survey will ask it later.
+export function setHearingAid(groupId, hearingAid) {
+  return updateDoc(groupRef(groupId), { hearingAid });
 }
 
 // Start a group with the signed-in person as its owner and first member, in one batch.

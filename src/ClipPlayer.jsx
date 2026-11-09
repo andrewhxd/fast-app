@@ -18,7 +18,12 @@ const NO_CLIPS = [];
 //   `idleLabel` shows above the bar before playback starts.
 // - compact: a small play button beside `title` and a line of `details` with the time,
 //   for a row in a list. `total` is the length to show while the audio loads.
-export default function ClipPlayer({ clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal, trailing }) {
+//
+// `onPlay()` is called each time playback starts from a tap, and `onEnd()` when the last clip
+// finishes. With `showLeft`, the full player shows the time left instead of the total.
+export default function ClipPlayer({
+  clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal, trailing, onPlay, onEnd, showLeft = false,
+}) {
   const audioRef = useRef(null);
   const [index, setIndex] = useState(0); // the clip in the player
   const [playing, setPlaying] = useState(false);
@@ -73,6 +78,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
     }
     audio.play();
     setPlaying(true);
+    onPlay?.();
   }
 
   function handleTimeUpdate() {
@@ -87,6 +93,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
     } else {
       setPlaying(false);
       setPosition(total);
+      onEnd?.();
     }
   }
 
@@ -127,7 +134,12 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
         aria-label={`Playback position${title ? ` for ${title}` : ''}`}
         aria-valuetext={`${formatTime(position)} of ${formatTime(total)}`}
         style={{ '--seek-progress': `${total ? position / total * 100 : 0}%` }} />
-      {!compact && <div className="seek-times"><span>{formatTime(position)}</span><span>{formatTime(total)}</span></div>}
+      {!compact && (
+        <div className="seek-times">
+          <span>{formatTime(position)}</span>
+          <span>{showLeft ? `${formatTime(total - Math.min(position, total))} left` : formatTime(total)}</span>
+        </div>
+      )}
     </div>
   );
   const button = (

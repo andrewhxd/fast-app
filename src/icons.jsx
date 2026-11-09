@@ -138,6 +138,16 @@ export function HeadphonesIcon() {
   );
 }
 
+// Play, drawn in lines like the menu's other icons.
+export function PlayOutlineIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="9" {...line} strokeWidth={2} />
+      <path d="M10 8.75v6.5l5-3.25z" {...line} strokeWidth={2} />
+    </Icon>
+  );
+}
+
 export function PlayIcon() {
   return (
     <Icon>

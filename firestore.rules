@@ -11,11 +11,14 @@ rules_version = '2';
 //
 // Collection: groups/{groupId}
 // Group ID: lowercase letters, numbers and hyphens (the app makes 20 random characters).
-// Fields (all required, no others, never change after create):
+// Fields (all required at create, no others, never change after create):
 //   - id: string - the same as the document ID
 //   - name: string (1-100 chars) - the patient's name, e.g. "Sam Smith"
 //   - ownerId: string - the uid of the lead caregiver, who started the group
 //   - createdAt, updatedAt: timestamp - server time of the create
+// Field added later, once:
+//   - hearingAid: bool - whether the patient uses a hearing aid or other hearing accommodation,
+//     answered by any member the first time a set is played; it can't be changed after that
 // Only members can read a group. It's created together with its owner's member document.
 //
 // Subcollection: groups/{groupId}/members/{uid}
@@ -40,6 +43,21 @@ rules_version = '2';
 //   - createdAt: timestamp - server time of the create
 // Only the owner creates, lists and cancels invites. The person it's for (signed in with that
 // email address) can read it, and uses it up when joining, which needs a confirmed email address.
+//
+// Subcollection: groups/{groupId}/sessions/{sessionId}
+// Document ID: auto-generated
+// One for each time a story set was played to the patient.
+// Fields (all required, no others, never change):
+//   - playedBy: string - the uid of the member who played it
+//   - affect: string, "happy" or "challenging", and setNumber: int (1 or 2) - the set played
+//   - day: string ("YYYY-MM-DD") - the day it counts toward, on the player's calendar
+//   - startedAt: timestamp - server time of the save, when the set started playing
+//   - prepared: list of the checklist items ticked before playing: all of "soundCheck", "told",
+//     "earbuds", "quiet" and "outOfView", plus "hearingAid" for a patient who uses one
+//   - awake: list (possibly empty) of the signs of being awake the patient showed: "eyesOpen",
+//     "eyesToArousal", "followsInstruction", "intentionalMovement", "turnsToSound", "makesSounds"
+//     and "respondsToTouch"
+// Members can read a group's sessions and save their own. Nobody can change or delete one.
 //
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
@@ -80,6 +98,7 @@ rules_version = '2';
 // The app saves a story and all its chunks in one batch, and removes them for good in one batch.
 // It lists a group's stories with where('group', '==', groupId), reads chunks by ID, moves a
 // story by updating only its setNumber, and deletes or restores one by updating it.
+// It lists a day's sessions with where('day', '==', day), and saves one with a single add.
 //
 // ===============================================================
 
@@ -217,6 +236,13 @@ service cloud.firestore {
         && !existsAfter(invitePath(groupId, data.invite));
     }
 
+    // Answering whether the patient uses a hearing aid: added once, and nothing else changes.
+    function isSettingHearingAid() {
+      return !('hearingAid' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hearingAid'])
+        && request.resource.data.hearingAid is bool;
+    }
+
     function isValidInvite(groupId, data) {
       let fields = ['email', 'groupName', 'invitedBy', 'invitedByName', 'createdAt'];
       return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
@@ -298,6 +324,24 @@ service cloud.firestore {
       return 'deletedAt' in resource.data && resource.data.deletedAt < request.time - recoveryPeriod();
     }
 
+    // A session, saved by the member who played it, as the set starts. The checklist items and
+    // signs of being awake must match PREPARE and AWAKE in src/playing.js.
+    function isValidSession(data) {
+      let fields = ['playedBy', 'affect', 'setNumber', 'day', 'startedAt', 'prepared', 'awake'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && data.playedBy == request.auth.uid
+        && data.affect in ['happy', 'challenging']
+        && isIntInRange(data.setNumber, 1, 2)
+        && data.day is string && data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.startedAt == request.time
+        && data.prepared is list && data.prepared.size() <= 6
+        && data.prepared.hasAll(['soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'])
+        && data.prepared.hasOnly(['hearingAid', 'soundCheck', 'told', 'earbuds', 'quiet', 'outOfView'])
+        && data.awake is list && data.awake.size() <= 7
+        && data.awake.hasOnly(['eyesOpen', 'eyesToArousal', 'followsInstruction', 'intentionalMovement',
+                               'turnsToSound', 'makesSounds', 'respondsToTouch']);
+    }
+
     function isValidStoryChunk(treatmentId, storyId, chunkId, data) {
       return data.keys().hasAll(['data']) && data.keys().hasOnly(['data'])
         && data.data is bytes && data.data.size() >= 1 && data.data.size() <= 1000000
@@ -318,7 +362,8 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && isValidGroup(groupId, request.resource.data)
         && existsAfter(memberPath(groupId, request.auth.uid));
-      allow update, delete: if false;
+      allow update: if isMember(groupId) && isSettingHearingAid();
+      allow delete: if false;
 
       match /members/{memberId} {
         allow read: if isMember(groupId);
@@ -339,6 +384,12 @@ service cloud.firestore {
         // The owner cancels it, or the person it's for uses it up when joining.
         allow delete: if isOwner(groupId)
           || (isEmailVerified() && myEmail() != '' && resource.data.email == myEmail());
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId) && isValidSession(request.resource.data);
+        allow update, delete: if false;
       }
     }
 
