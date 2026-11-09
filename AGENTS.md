@@ -83,7 +83,8 @@ These come from the project doc ([docs/requirements.md](docs/requirements.md)) a
 - There are exactly **4 story sets**: Happy set 1, Happy set 2, Challenging set 1 and Challenging set 2 (doc slides 10, 11 and 21).
 - A story can be any length up to **5:00, counting the patient's name** said 3 times at its start.
 - A set holds any number of stories that add up to **9:00 to 11:00**.
-- Stories move only between sets with the same affect (happy or challenging).
+- A saved story can move to any set, including one with the other affect (a happy story can become a challenging one, and the reverse), as long as both sets stay at or under 11:00.
+The client asked for this after testing (it was first built to keep the affect).
 - Randomness belongs to playback, which is not built yet: 4 sessions a day, at least 2 hours apart, each playing a random set not yet played that day, with the stories in a set in random order, for 168 sessions in all (slides 22 and 23).
 - Open question: the slide 10 scenario gives happy sets 9:45 to 10:15, while the user stories (slides 11 and 19) say 9:00 to 11:00.
 The app uses 9:00 to 11:00 for all 4 sets until the client says otherwise.
@@ -186,7 +187,8 @@ An edited saved story replaces the old one in one step, so it's never half saved
 - **Listen**: every set under Happy events and Challenging events, each with a whole-set player, its target status, and its stories.
 Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 **Recently deleted**, at the end of Listen, keeps deleted stories (and the earlier versions of edited ones) for 30 days: each can be played and **Restore**d to its set, or to the other set of its affect if that one is full.
-**Rearrange** (top right) or **Move**: tap a story, then a story in the other set with the same affect to swap them, or **Move here**.
+**Rearrange** (top right) or **Move**: tap a story, then a story in any other set to swap them, or **Move here** in the set you want.
+This works across affects, so a story saved as happy can be moved to a challenging set, and the swap exchanges their affects.
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
 The set and individual story players have seek bars that move through the name and story recordings.
@@ -276,7 +278,7 @@ Every request must be signed in.
 Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
-Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
+Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`affect` and `setNumber`, to a valid affect and set 1 or 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
 The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).
 Everything else is denied.
