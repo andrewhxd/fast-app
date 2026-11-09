@@ -17,7 +17,7 @@ Only a care team's members can see or change its stories, which the database's s
 - Record a story in 3 steps: the patient's name said 3 times, the story (up to 5:00, counting the name), then its details.
 - Track each set toward its 9:00 to 11:00 target.
 - Fix a story that runs long with a simple editor: trim the ends, shorten long pauses, or speed up or cut a part.
-- Listen to whole sets or single stories, seek within them, and move or swap stories between sets of the same kind.
+- Listen to whole sets or single stories, seek within them, and move or swap stories between sets, even from happy to challenging.
 - Works on phones and on computers (with a sidebar layout at 960 px and wider), in light and dark mode.
 
 Separate access levels (administrator, clinician, storyteller, player), the eligibility survey, clinician approval and playing sessions to the patient are not built yet.
