@@ -147,19 +147,19 @@ export function splitClips(story, blob) {
   ];
 }
 
-// Move a story to the other set with the same affect (set 1 or 2).
-export function moveStory(story, setNumber, groupId) {
+// Move a story to any other set: set 1 or 2 of either affect.
+export function moveStory(story, affect, setNumber, groupId) {
   assertStoryGroup(story, groupId);
-  return updateDoc(doc(storiesRef, story.id), { setNumber });
+  return updateDoc(doc(storiesRef, story.id), { affect, setNumber });
 }
 
-// Swap two stories between the two sets with the same affect, in one batch so both move or neither does.
+// Swap two stories between their sets (of the same affect or not), in one batch so both move or neither does.
 export function swapStories(a, b, groupId) {
   assertStoryGroup(a, groupId);
   assertStoryGroup(b, groupId);
   const batch = writeBatch(db);
-  batch.update(doc(storiesRef, a.id), { setNumber: b.setNumber });
-  batch.update(doc(storiesRef, b.id), { setNumber: a.setNumber });
+  batch.update(doc(storiesRef, a.id), { affect: b.affect, setNumber: b.setNumber });
+  batch.update(doc(storiesRef, b.id), { affect: a.affect, setNumber: a.setNumber });
   return batch.commit();
 }
 

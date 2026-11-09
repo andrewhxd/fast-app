@@ -116,7 +116,7 @@ The app deliberately has a simpler editor; see [design.md](design.md).
 - Edit or delete a story.
 Deleting is recoverable: deleted stories stay in Listen's Recently deleted for 30 days, where they can be restored (asked for in the client's feedback, issue #6).
 If an edit makes a set too long, go to its list of stories to pick one to edit; if too short, go back to recording.
-- Move stories between sets with the same affect.
+- Move stories between sets, including to the other affect (the client asked for this after testing).
 - The clinician can review stories and give comments. **Not built.**
 - "Regroup stories by affect", where the system builds sets that fit the target automatically. **Not built.**
 

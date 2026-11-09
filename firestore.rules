@@ -50,8 +50,9 @@ rules_version = '2';
 //   - storyteller: string (1-100 chars) - the family member telling the story
 //   - relationship: nonempty string, up to 100 characters (including custom and older values)
 //   - affect: string, "happy" or "challenging"
-//   - setNumber: int (1 or 2) - which of the two sets with this affect; the only field that can
-//     change after create (moving a story to the other set with the same affect)
+//   - setNumber: int (1 or 2) - which of the two sets with this affect; with affect, the only
+//     fields that can change after create (moving a story to any other set, even one with the
+//     other affect)
 //   - group: string - the ID of the group the story belongs to; the writer must be a member
 //   - nameDuration: int (1-60,000) - ms of the clip saying the patient's name 3 times
 //   - storyDuration: int (1-300,000) - ms of the story clip; with the name clip, at most 5:00
@@ -66,8 +67,9 @@ rules_version = '2';
 //   - deletedBy: string - the uid of the member who deleted it
 //   - replacedBy: string (optional) - set when an edit replaced it: the ID of the edited story,
 //     created in the same batch
-// After create, a story changes only by moving (setNumber), being deleted (adding the fields above)
-// or being restored (removing them, and possibly changing setNumber). A deleted story can't move.
+// After create, a story changes only by moving (affect and setNumber), being deleted (adding the
+// fields above) or being restored (removing them, and possibly changing setNumber).
+// A deleted story can't move.
 // It's removed for good, with its chunks, only once it has been deleted for 30 days.
 // Stories saved before groups existed have no `group`, so nobody can read them until they're
 // given one.
@@ -79,7 +81,7 @@ rules_version = '2';
 //
 // The app saves a story and all its chunks in one batch, and removes them for good in one batch.
 // It lists a group's stories with where('group', '==', groupId), reads chunks by ID, moves a
-// story by updating only its setNumber, and deletes or restores one by updating it.
+// story by updating only its affect and setNumber, and deletes or restores one by updating it.
 //
 // ===============================================================
 
@@ -254,13 +256,15 @@ service cloud.firestore {
         && storyChunkWrittenIfNeeded(treatmentId, storyId, data.chunkCount, 4);
     }
 
-    // Moving a story: only setNumber changes, to 1 or 2. The affect and group can't change, so a story
-    // only moves between the two sets with the same affect, and every other field stays as validated on create.
-    // A deleted story can't move.
+    // Moving a story: only affect and setNumber change, to a valid affect and to set 1 or 2, so a story
+    // can move to any set, including one with the other affect. The group can't change, and every other
+    // field stays as validated on create. A deleted story can't move.
     function isValidStoryMove() {
+      let data = request.resource.data;
       return !('deletedAt' in resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['setNumber'])
-        && isIntInRange(request.resource.data.setNumber, 1, 2);
+        && data.diff(resource.data).affectedKeys().hasOnly(['affect', 'setNumber'])
+        && data.affect in ['happy', 'challenging']
+        && isIntInRange(data.setNumber, 1, 2);
     }
 
     // A story created in this same batch, in the same group: the edited version of a story.
