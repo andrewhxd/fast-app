@@ -333,7 +333,7 @@ Everything else is denied.
 - `src/audio.js`: picks a recording format the browser supports.
 - `src/icons.jsx`: the small inline icons.
 - `src/styles.css`: the stylesheet, with light and dark colors defined once at the top and the computer layout at the end.
-- `scripts/seed.js`: fills the local emulators with demo accounts, care teams, invites and sample stories (the ones in the design canvas), with generated voice-like WAV audio.
+- `scripts/seed.js`: fills the local emulators with demo accounts, care teams, invites and sample stories (the ones in the design canvas), spoken by the Mac's built-in voices (`say`), or a voice-like hum on other computers.
 - `firestore.rules`: the security rules, which are also the data model's schema.
 - `tests/rules.test.js`: the security rules tests.
 - `docs/`: onboarding docs (requirements, architecture, design, roadmap).
