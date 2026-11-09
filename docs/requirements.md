@@ -157,7 +157,7 @@ If yes, prompt them to consider stopping and to re-assess weekly.
 
 Screens (slides 25 to 27):
 - Home shows "0 of 168 complete", "N days - 4 stories played" and "N of 4 today", with the play options disabled until the sets are approved.
-- The pre-session checklist has two screens: the checklist items (sound test completed, room prepared, patient told, earbuds in) with the Play button greyed out until all are checked, then the awake behaviors.
+- The pre-session checklist has two screens: first the awake behaviors (with Next), then the checklist items (sound test completed, room prepared, patient told, earbuds in) with the Play button greyed out until all are checked.
 - While playing: "Playing Happy story set 1" with a progress bar and time.
 - The post-session checklist: each behavior with More, Less or Same.
 

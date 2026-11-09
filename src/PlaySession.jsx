@@ -9,10 +9,10 @@ import { listSessionsOn, markSessionEnded, saveSession } from './sessions.js';
 import { loadStoryAudio, splitClips } from './storage.js';
 import { setKey, setName, storiesInSet } from './stories.js';
 
-// Playing a story set to the patient, in 3 steps (slides 22 to 26):
-//   1. "Get ready": a sound check and the checklist (hearing aid, told, earbuds, quiet room, out of view).
-//   2. "Is Sam awake?": which signs of being awake the patient shows. With none, it suggests waiting,
-//      but they can still play.
+// Playing a story set to the patient, in 3 steps, in the order of slide 26:
+//   1. "Is Sam awake?": which signs of being awake the patient shows. With none, it suggests waiting,
+//      but they can still go on.
+//   2. "Get ready": a sound check and the checklist (hearing aid, told, earbuds, quiet room, out of view).
 //   3. The set plays: one picked at random from the sets not yet played today, its stories shuffled.
 // The session is saved when the set starts playing, and marked as ended if it plays to the end.
 // `group` is the current care team; `onHearingAid(answer)` updates it once the hearing aid question
@@ -21,11 +21,11 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
   const { name } = group; // the patient's name
   const [plan, setPlan] = useState(null); // { affect, setNumber, stories, day }, or { none: 'empty' | 'played' }
   const [clips, setClips] = useState(null); // the set's clips in playing order, once loaded
-  const [step, setStep] = useState('prepare'); // 'prepare', 'awake', 'playing' or 'done'
+  const [step, setStep] = useState('awake'); // 'awake', 'prepare', 'playing' or 'done'
   const [hearingAid, setHearingAidAnswer] = useState(group.hearingAid); // undefined until answered
   const [prepared, setPrepared] = useState([]); // checklist keys ticked
   const [awake, setAwake] = useState([]); // signs of being awake ticked
-  const [notAwake, setNotAwake] = useState(false); // asking whether to play with no signs of being awake
+  const [notAwake, setNotAwake] = useState(false); // asking whether to go on with no signs of being awake
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const saved = useRef(null); // the session being saved: a promise of its id
@@ -83,16 +83,17 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
       setSaving(false);
       onHearingAid(hearingAid);
     }
-    setStep('awake');
+    setStep('playing');
     window.scrollTo(0, 0);
   }
 
-  function startPlaying() {
+  // With no signs of being awake, suggest waiting first; they can still go on.
+  function finishAwake() {
     if (!awake.length && !notAwake) {
       setNotAwake(true);
       return;
     }
-    setStep('playing');
+    setStep('prepare');
     window.scrollTo(0, 0);
   }
 
@@ -121,7 +122,7 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
   }
 
   const errorMessage = error && <p className="error" role="alert">{error}</p>;
-  const stepNumber = { prepare: 1, awake: 2, playing: 3, done: 3 }[step];
+  const stepNumber = { awake: 1, prepare: 2, playing: 3, done: 3 }[step];
   const navBar = (
     <NavBar
       left={step !== 'done' && <button className="nav-button" onClick={onCancel}>Cancel</button>}
@@ -162,6 +163,39 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
     <>
       {navBar}
       <main className="content">
+        {step === 'awake' && (
+          <>
+            <h1 className="page-title">Is {name} awake?</h1>
+            <p className="lead">Tick everything {name} is doing right now.</p>
+            <Checklist
+              label={`Signs ${name} is awake`}
+              options={AWAKE}
+              checked={awake}
+              onToggle={(key) => {
+                toggle(awake, setAwake, key);
+                setNotAwake(false);
+              }}
+            />
+            <div className="actions">
+              {notAwake ? (
+                <div className="confirm" role="alert">
+                  <p>{name} may not be awake yet.</p>
+                  <p className="card-text">
+                    Try again in an hour or so, or gently wake {name} by calling their name or touching their arm.
+                    If you can&apos;t, you can still go on.
+                  </p>
+                  <div className="buttons">
+                    <button className="pill pill-primary" onClick={finishAwake}>Continue</button>
+                    <button className="pill pill-white" onClick={onCancel}>Not now</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="pill pill-primary" onClick={finishAwake}>Next</button>
+              )}
+            </div>
+          </>
+        )}
+
         {step === 'prepare' && (
           <>
             <h1 className="page-title">Get ready</h1>
@@ -196,39 +230,6 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
                 {saving ? 'Saving...' : 'Continue'}
               </button>
               {!ready && <p className="footnote">Tick every item to continue.</p>}
-            </div>
-          </>
-        )}
-
-        {step === 'awake' && (
-          <>
-            <h1 className="page-title">Is {name} awake?</h1>
-            <p className="lead">Tick everything {name} is doing right now.</p>
-            <Checklist
-              label={`Signs ${name} is awake`}
-              options={AWAKE}
-              checked={awake}
-              onToggle={(key) => {
-                toggle(awake, setAwake, key);
-                setNotAwake(false);
-              }}
-            />
-            <div className="actions">
-              {notAwake ? (
-                <div className="confirm" role="alert">
-                  <p>{name} may not be awake yet.</p>
-                  <p className="card-text">
-                    Try again in an hour or so, or gently wake {name} by calling their name or touching their arm.
-                    If you can&apos;t, you can still play the set now.
-                  </p>
-                  <div className="buttons">
-                    <button className="pill pill-primary" onClick={startPlaying}>Play anyway</button>
-                    <button className="pill pill-white" onClick={onCancel}>Not now</button>
-                  </div>
-                </div>
-              ) : (
-                <button className="pill pill-primary" onClick={startPlaying}>Continue</button>
-              )}
             </div>
           </>
         )}

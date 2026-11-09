@@ -131,7 +131,7 @@ When seeking to another clip, the player waits for its metadata before applying 
 
 ## Playing to the patient (`src/PlaySession.jsx`, `src/playing.js`, `src/sessions.js`)
 
-- `PlaySession` is a small state machine over `step`: `prepare` (the sound check and checklist) → `awake` (signs of being awake) → `playing` → `done`.
+- `PlaySession` is a small state machine over `step`, in the order of slide 26: `awake` (signs of being awake) → `prepare` (the sound check and checklist) → `playing` → `done`.
 - When it opens, it loads today's sessions (`listSessionsOn()`, by `day`), picks one of the sets with stories not yet played today at random (`playableSets()` and `pickSet()`), shuffles its stories (`shuffled()`), and starts loading their audio, so it's ready by the time the checklist is done.
 - `day` is the date on the playing device's calendar (`localDay()`), so a set isn't repeated on the same day.
 - The session is saved the first time Play is tapped (`ClipPlayer`'s `onPlay`), with the checklist keys (`PREPARE`) and the signs of being awake (`AWAKE`).

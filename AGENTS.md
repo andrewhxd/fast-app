@@ -191,12 +191,12 @@ Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
 The set and individual story players have seek bars that move through the name and story recordings.
-- **Play Stories** (Home, or Play in the menu), in 3 steps.
+- **Play Stories** (Home, or Play in the menu), in 3 steps, in the order of slide 26.
 For testing, any set with stories can be played; later, playing opens only once all 4 sets are approved.
-  1. **Get ready**: the first time, whether the patient uses a hearing aid (saved for the care team); a sound check that plays a short chime (`src/chime.js`); and a checklist (hearing aid in place if they use one, the patient told, earbuds in, door closed and room quiet, out of view).
+  1. **Is Sam awake?**: tick the signs of being awake.
+With none, the app suggests waiting an hour or gently waking them, and offers **Continue** or **Not now**.
+  2. **Get ready**: the first time, whether the patient uses a hearing aid (saved for the care team); a sound check that plays a short chime (`src/chime.js`); and a checklist (hearing aid in place if they use one, the patient told, earbuds in, door closed and room quiet, out of view).
 Continue stays greyed out until every item is ticked.
-  2. **Is Sam awake?**: tick the signs of being awake.
-With none, the app suggests waiting an hour or gently waking them, and offers **Play anyway** or **Not now**.
   3. **Playing**: a random set not yet played today, its stories shuffled, with the time left.
 The session is saved when Play is first tapped and marked as ended if the set plays to the end, which ends with "Take the earbuds out".
 Once every set with stories has played that day, Play says the next session is tomorrow.
