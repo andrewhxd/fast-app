@@ -1432,6 +1432,24 @@ body:has(.guide[open]) { overflow: hidden; }
   pointer-events: none;
 }
 
+.preview-playhead {
+  position: absolute;
+  z-index: 1;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--surface);
+  pointer-events: none;
+}
+
+.preview-playhead:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
 .trim-handle {
   position: absolute;
   top: -0.25rem;

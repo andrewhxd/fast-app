@@ -89,6 +89,8 @@ When the set has 5:00 or less of room, markers show where the set reaches 9:00 a
 - **A simple editor, not a Voice Memos copy**: the doc points to the iPhone Voice Memos editor, but families only need to get under a limit.
 So there are four tools: shorten long pauses (one switch), trim the start and end, speed up (1.1× or 1.2×, voice keeps its pitch) or cut a part, and add a part or record over one (slide 11, "add segments": tap a spot to add, or drag across a part to replace it, like Voice Memos' Replace).
 A readout always shows the length before and after, and whether it fits.
+On the main editor, a playhead moves across the waveform in proportion to the edited story's playback time.
+Tap the waveform or use the keyboard to seek, and pause or resume the preview without losing your place.
 - **Rearrange keeps the affect** (slide 19): stories move only between sets of the same affect.
 Tap a story, then "Move here" or another story to swap with.
 "No room" and "Won't fit" explain when a move would take a set over 11:00.

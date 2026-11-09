@@ -4,7 +4,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SAMPLE_RATE, insertSpan, noEdits, planSegments, plannedLength, withCut, withInsert, withMovedInsert, withoutInsert,
+  SAMPLE_RATE, insertSpan, noEdits, planSegments, plannedLength, render, withCut, withInsert, withMovedInsert, withSpeedup, withoutInsert,
 } from '../src/audioEdit.js';
 
 // A new recording `seconds` long.
@@ -76,4 +76,21 @@ describe('adding and recording over parts', () => {
     const edits = withInsert(withCut(story, 1, 3), 5, recording(2));
     assert.deepEqual(insertSpan(planSegments(edits, []), edits.inserts[0].id), { start: 3, length: 2 });
   });
+});
+
+test('rendered playback includes edited and added parts in the planned order', async () => {
+  const original = recording(10).fill(0.25);
+  const added = recording(2).fill(0.75);
+  let edits = { ...noEdits(10), trimStart: 0.5, trimEnd: 9.5, shortenPauses: true };
+  edits = withCut(edits, 1, 2);
+  edits = withSpeedup(edits, 6, 8, 1.2);
+  edits = withInsert(edits, 4, added, 5);
+  const segments = planSegments(edits, [{ start: 2, end: 4 }]);
+  const inserted = insertSpan(segments, edits.inserts[0].id);
+  const out = await render(original, segments);
+
+  assert.ok(Math.abs(out.length / SAMPLE_RATE - plannedLength(segments)) < 0.001);
+  assert.equal(inserted.length, 2);
+  assert.ok(Math.abs(out[Math.round((inserted.start + 1) * SAMPLE_RATE)] - 0.75) < 0.001);
+  assert.ok(Math.abs(out[Math.round((inserted.start + inserted.length + 0.2) * SAMPLE_RATE)] - 0.25) < 0.001);
 });
