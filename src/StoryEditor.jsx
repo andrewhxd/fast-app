@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import NavBar from './NavBar.jsx';
 import { wakeAudio } from './LiveWaveform.jsx';
 import { RecordButtons, RecorderCard } from './RecorderControls.jsx';
-import { BackIcon, ChevronIcon, PlayIcon, StopIcon } from './icons.jsx';
+import { BackIcon, ChevronIcon, PauseIcon, PlayIcon, StopIcon } from './icons.jsx';
 import {
   SAMPLE_RATE, decodeClip, encodeMp3, findPauses, isEdited, lengthOf, noEdits, pauseSavings, peaks, planSegments,
   insertSpan, plannedLength, render, withCut, withInsert, withMovedInsert, withSpeedup, withoutInsert,
@@ -69,14 +69,18 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   const [adding, setAdding] = useState(false); // decoding a new recording
   const [movingId, setMovingId] = useState(null); // the added part being moved, in 'add'
   const [rate, setRate] = useState(1.1);
-  // { loading } or { position } while the preview plays; `around` is the added part it plays around, if any
+  // A preview can be preparing or playing; `around` is the added part it plays around, if any.
   const [preview, setPreview] = useState(null);
+  const [position, setPosition] = useState(0); // edited story playback position, in milliseconds
+  const [previewDuration, setPreviewDuration] = useState(null); // actual rendered duration, in milliseconds
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const waveRef = useRef(null);
   const dragRef = useRef(null); // 'start' or 'end' handle, or { anchor } of a selection
+  const trimTouchRef = useRef(null); // distinguish a nearby tap from dragging a trim handle
   const playerRef = useRef(null); // the playing preview: { source, startedAt, frame }
   const pendingRef = useRef(null); // the preview being prepared, if any
+  const renderedRef = useRef(null); // rendered buffer for the current edit plan
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +102,12 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }, [name, story]);
 
   // Any change to the edit stops the preview, which would no longer match.
-  useEffect(() => () => stopPreview(), [edits]);
+  useEffect(() => {
+    setPosition(0);
+    setPreviewDuration(null);
+    renderedRef.current = null;
+    return () => stopPreview();
+  }, [edits]);
 
   const length = samples ? lengthOf(samples) : 0;
   const segments = useMemo(() => edits && planSegments(edits, pauses), [edits, pauses]);
@@ -126,42 +135,99 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }
 
   function togglePreview() {
-    if (preview) stopPreview();
-    else startPreview();
+    if (preview) {
+      const player = playerRef.current;
+      if (player && player.around === null) setPosition(Math.min(player.duration, (player.from + player.context.currentTime - player.startedAt) * 1000));
+      stopPreview();
+    } else {
+      startPreview(null, position >= playbackDuration ? 0 : position);
+    }
   }
 
   // Play the edited story, or with `around` (an added part's id), just a few seconds either side of it.
-  async function startPreview(around = null) {
+  async function startPreview(around = null, positionMs = 0) {
     const context = wakeAudio(); // during the tap, so the phone lets it play
+    stopPreview();
     const pending = {};
     pendingRef.current = pending;
     setPreview({ loading: true, around });
-    let from = 0;
+    setError('');
+    let from = positionMs / 1000;
     let playFor;
     if (around !== null) {
       const span = insertSpan(segments, around);
       from = Math.max(0, span.start - AROUND);
       playFor = span.start - from + span.length + AROUND;
     }
-    const out = await render(samples, segments);
+    let buffer;
+    try {
+      if (renderedRef.current?.segments === segments) buffer = await renderedRef.current.buffer;
+      else {
+        const bufferPromise = render(samples, segments).then((out) => {
+          if (!out.length) throw new Error('The edited story is empty.');
+          const result = context.createBuffer(1, out.length, SAMPLE_RATE);
+          result.copyToChannel(out, 0);
+          return result;
+        });
+        renderedRef.current = { segments, buffer: bufferPromise };
+        buffer = await bufferPromise;
+      }
+    } catch (err) {
+      if (pendingRef.current === pending) {
+        renderedRef.current = null;
+        pendingRef.current = null;
+        setPreview(null);
+        setError(`Could not play the story: ${err.message}`);
+      }
+      return;
+    }
     if (pendingRef.current !== pending) return; // stopped, edited or closed meanwhile
     pendingRef.current = null;
-    const buffer = context.createBuffer(1, out.length, SAMPLE_RATE);
-    buffer.copyToChannel(out, 0);
+    const duration = buffer.duration * 1000;
+    setPreviewDuration(duration);
+    from = clamp(from, 0, buffer.duration);
+    if (from >= buffer.duration) {
+      if (around === null) setPosition(duration);
+      setPreview(null);
+      return;
+    }
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
-    const player = { source, startedAt: context.currentTime, frame: 0 };
+    const player = { source, context, from, duration, around, startedAt: context.currentTime, frame: 0 };
     source.onended = () => {
-      if (playerRef.current === player) stopPreview();
+      if (playerRef.current === player) {
+        if (around === null) setPosition(duration);
+        stopPreview();
+      }
     };
     playerRef.current = player;
     source.start(0, from, playFor);
+    setPreview({ loading: false, around });
     const tick = () => {
-      setPreview({ position: (from + context.currentTime - player.startedAt) * 1000, around });
+      if (around === null) setPosition(Math.min(duration, (from + context.currentTime - player.startedAt) * 1000));
       player.frame = requestAnimationFrame(tick);
     };
     tick();
+  }
+
+  function seekPreview(next) {
+    const positionMs = clamp(next, 0, playbackDuration);
+    const wasPlaying = Boolean(preview && preview.around === null);
+    stopPreview();
+    setPosition(positionMs);
+    if (wasPlaying && positionMs < playbackDuration) startPreview(null, positionMs);
+  }
+
+  function seekKey(event) {
+    const step = event.shiftKey ? 5000 : 1000;
+    const delta = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step }[event.key];
+    if (delta !== undefined) seekPreview(position + delta);
+    else if (event.key === 'Home') seekPreview(0);
+    else if (event.key === 'End') seekPreview(playbackDuration);
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // ---------- Dragging on the waveform ----------
@@ -228,8 +294,13 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       const width = waveRef.current.getBoundingClientRect().width;
       const toPixels = (t) => Math.abs(t - time) / length * width;
       const which = toPixels(edits.trimStart) <= toPixels(edits.trimEnd) ? 'start' : 'end';
-      if (toPixels(which === 'start' ? edits.trimStart : edits.trimEnd) > HANDLE_REACH) return;
+      if (toPixels(which === 'start' ? edits.trimStart : edits.trimEnd) > HANDLE_REACH) {
+        const box = waveRef.current.getBoundingClientRect();
+        seekPreview(clamp((event.clientX - box.left) / box.width, 0, 1) * playbackDuration);
+        return;
+      }
       dragRef.current = which;
+      trimTouchRef.current = { x: event.clientX, moved: false, onHandle: Boolean(event.target.closest('.trim-handle')) };
     } else {
       setMovingId(null);
       dragRef.current = { anchor: time };
@@ -242,18 +313,26 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
     const drag = dragRef.current;
     if (!drag) return;
     const time = timeAt(event.clientX);
-    if (typeof drag === 'string') moveHandle(drag, time);
+    if (typeof drag === 'string') {
+      if (Math.abs(event.clientX - trimTouchRef.current.x) > 3) trimTouchRef.current.moved = true;
+      if (trimTouchRef.current.moved) moveHandle(drag, time);
+    }
     else if (drag.edge) dragInsert(drag, time);
     else setSelection({ start: Math.min(drag.anchor, time), end: Math.max(drag.anchor, time) });
   }
 
-  function pointerUp() {
+  function pointerUp(event) {
     const drag = dragRef.current;
+    if (typeof drag === 'string' && trimTouchRef.current && !trimTouchRef.current.moved && !trimTouchRef.current.onHandle && event.type !== 'pointercancel') {
+      const box = waveRef.current.getBoundingClientRect();
+      seekPreview(clamp((event.clientX - box.left) / box.width, 0, 1) * playbackDuration);
+    }
     if (drag && typeof drag !== 'string' && !drag.edge && selection && selection.end - selection.start < 0.5) {
       // A tap, not a drag: when adding, it's the spot to add at; otherwise nothing is picked.
       setSelection(mode === 'add' ? { start: drag.anchor, end: drag.anchor } : null);
     }
     dragRef.current = null;
+    trimTouchRef.current = null;
   }
 
   // Arrow keys move a focused handle by half a second (5 seconds with Shift).
@@ -293,6 +372,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
   }
 
   function leaveMode() {
+    stopPreview();
     setMode('main');
     setSelection(null);
     setMovingId(null);
@@ -359,6 +439,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
 
   const percent = (time) => `${(time / length) * 100}%`;
   const storyAfter = segments ? plannedLength(segments) * 1000 : 0;
+  const playbackDuration = previewDuration ?? storyAfter;
   const trimSaved = edits ? edits.trimStart + (length - edits.trimEnd) : 0;
   const savedByPauses = pauseSavings(pauses);
   const partCount = edits ? edits.speedups.length + edits.cuts.length : 0;
@@ -427,6 +508,18 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
       )}
       {mode === 'main' && (
         <>
+          <span
+            className="preview-playhead"
+            style={{ left: `${playbackDuration ? clamp(position / playbackDuration, 0, 1) * 100 : 0}%` }}
+            role="slider"
+            tabIndex={saving || !playbackDuration ? -1 : 0}
+            aria-label="Playback position in the edited story"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(playbackDuration / 1000)}
+            aria-valuenow={Math.min(Math.round(position / 1000), Math.round(playbackDuration / 1000))}
+            aria-valuetext={`${formatTime(position)} of ${formatTime(playbackDuration)}`}
+            onKeyDown={seekKey}
+          />
           <span className="trim-frame" style={{ left: percent(edits.trimStart), right: `${100 - (edits.trimEnd / length) * 100}%` }} />
           <span
             className="trim-handle"
@@ -645,13 +738,12 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
           {waveform}
           {ruler}
           <div className="preview-row">
-            <button className="play-button" onClick={togglePreview} disabled={saving || preview?.loading} aria-label={preview ? 'Stop' : 'Play the edited story'}>
-              {preview && !preview.loading ? <StopIcon /> : <PlayIcon />}
+            <button className="play-button" onClick={togglePreview} disabled={saving || preview?.loading || !playbackDuration} aria-label={preview ? 'Pause the edited story' : 'Play the edited story'}>
+              {preview && !preview.loading ? <PauseIcon /> : <PlayIcon />}
             </button>
             <span>
-              {!preview && 'Play the edited story'}
               {preview?.loading && 'Getting it ready...'}
-              {preview && !preview.loading && <>{formatTime(preview.position)} of {formatTime(storyAfter)}</>}
+              {!preview?.loading && <>{formatTime(position)} of {formatTime(playbackDuration)}</>}
             </span>
           </div>
         </section>
@@ -683,7 +775,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
               <span>Drag the purple handles{trimSaved >= 0.5 ? ` · saves ${formatTime(trimSaved * 1000)}` : ''}</span>
             </span>
           </div>
-          <button className="tool-row" onClick={() => setMode('part')} disabled={saving}>
+          <button className="tool-row" onClick={() => { stopPreview(); setMode('part'); }} disabled={saving}>
             <span className="tool-text">
               <strong>Speed up or cut a part</strong>
               <span>
@@ -697,7 +789,7 @@ export default function StoryEditor({ name, story, maxLength, limitText, onSave,
             </span>
             <ChevronIcon />
           </button>
-          <button className="tool-row" onClick={() => setMode('add')} disabled={saving}>
+          <button className="tool-row" onClick={() => { stopPreview(); setMode('add'); }} disabled={saving}>
             <span className="tool-text">
               <strong>Add or record over a part</strong>
               <span>

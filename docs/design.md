@@ -41,11 +41,12 @@ Color is never the only signal; there is always text too ("Ready", "In range", "
 
 ### Layout
 
-- **Phone** (the main target): a single column up to 28rem (448 px) wide, a top bar with text buttons (Back, Cancel, Menu), and a Menu that opens Home, Record a Story and Listen to Stories.
+- **Phone** (the main target): a single column up to 28rem (448 px) wide, a top bar with text buttons (Back, Cancel, Menu), and a Menu that opens Home, Record a Story and Listen and Edit Stories.
 - Home shows a compact current-group card with a group name selector.
 Choosing a group updates the `group` query parameter in the URL.
 If the URL points to a group that does not exist, show the selector and a clear recovery message without showing story progress.
 - **Computer** (960 px and wider): a 256 px sidebar replaces Menu and Back.
+The sidebar calls the story screen "Listen" to keep its navigation label short.
 Home shows all 4 sets with their own Record buttons, and sets sit in two columns, happy beside challenging, in a page up to 64rem wide.
 Recording and editing use a narrower 42rem column, and the sidebar is locked ("Finish or cancel this story to leave.") so a recording isn't lost by accident.
 
@@ -75,18 +76,21 @@ The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one settin
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
 Home already says so.
 - **Recording in 3 steps**: say the name 3 times, tell the story, add details (title, storyteller, relationship, happy or challenging).
+The relationship list includes an Other option with a text field for relationships not listed.
 A five-card guide shows the selected set, microphone access and the recording steps, with iPhone and Android microphone permission screenshots.
 It's a dialog over the record screen, not a screen of its own, so it never stands between someone and the Start button.
 It opens by itself the first time someone records on that device; after that, the info button in the top right corner opens it at the card for the current step.
 Close, Escape or a tap outside closes it, and it can't be opened while recording.
 It keeps one size on every card, so Next and Previous stay in the same place; on a short phone the card scrolls between them.
 The timer shows the 5:00 limit and turns yellow at 4:30 (slide 14).
-When the set has less than 5:00 of room, a "Set full" marker shows where the set would pass 11:00.
+When the set has 5:00 or less of room, markers show where the set reaches 9:00 and 11:00, and a set progress readout shows the time remaining to each.
 "Finish" is disabled for the first second, so a double tap on Start can't end the recording.
 - **When a story runs long** (slides 15 and 16): over 5:00, or too long for its set, the app shows the time left in the set and offers **Edit to fit** (recommended, keeps everything said) or **Record it again** (keeps the name recording).
 - **A simple editor, not a Voice Memos copy**: the doc points to the iPhone Voice Memos editor, but families only need to get under a limit.
 So there are four tools: shorten long pauses (one switch), trim the start and end, speed up (1.1× or 1.2×, voice keeps its pitch) or cut a part, and add a part or record over one (slide 11, "add segments": tap a spot to add, or drag across a part to replace it, like Voice Memos' Replace).
 A readout always shows the length before and after, and whether it fits.
+On the main editor, a playhead moves across the waveform in proportion to the edited story's playback time.
+Tap the waveform or use the keyboard to seek, and pause or resume the preview without losing your place.
 - **Rearrange keeps the affect** (slide 19): stories move only between sets of the same affect.
 Tap a story, then "Move here" or another story to swap with.
 "No room" and "Won't fit" explain when a move would take a set over 11:00.

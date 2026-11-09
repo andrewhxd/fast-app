@@ -13,7 +13,7 @@ export const SETS = [
   { affect: 'challenging', setNumber: 2 },
 ];
 
-export const RELATIONSHIPS = ['Mother', 'Father', 'Sister', 'Brother', 'Aunt', 'Uncle', 'Cousin', 'Friend'];
+export const RELATIONSHIPS = ['Mother', 'Father', 'Sibling', 'Partner', 'Spouse', 'Child', 'Aunt', 'Uncle', 'Cousin', 'Friend'];
 
 const MINUTE = 60_000; // ms
 export const SET_MIN = 9 * MINUTE;
@@ -21,6 +21,19 @@ export const SET_MAX = 11 * MINUTE;
 export const STORY_MAX = 5 * MINUTE; // must match firestore.rules
 export const STORY_WARN = 4.5 * MINUTE; // the story timer turns yellow here
 export const NAME_MAX = 1 * MINUTE; // saying a name 3 times takes seconds; must match firestore.rules
+
+// Set progress includes the current, unsaved recording (including the name).
+export function recordingSetProgress(room, length) {
+  const minimum = Math.max(0, room - (SET_MAX - SET_MIN));
+  return {
+    show: room <= STORY_MAX,
+    minimum,
+    maximum: Math.max(0, room),
+    toMinimum: Math.max(0, minimum - length),
+    toMaximum: Math.max(0, room - length),
+    overMaximum: length > room,
+  };
+}
 
 // A deleted story can be restored for this many days, then it's removed for good. Must match firestore.rules.
 export const RECOVERY_DAYS = 30;

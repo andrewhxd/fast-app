@@ -183,7 +183,7 @@ export default function StoryLibrary({
           <span className="pick-mark">{isSelected && <CheckIcon />}</span>
           <span className="mini-text">
             <strong>{story.title}</strong>
-            <span>{story.storyteller} · {formatTime(length)}</span>
+            <span>{story.storyteller} · {story.relationship} · {formatTime(length)}</span>
           </span>
           {swappable && <span className="tag">Swap</span>}
           {inTarget && !swappable && <span className="hint">Won&apos;t fit</span>}
@@ -195,7 +195,7 @@ export default function StoryLibrary({
     return (
       <div key={story.id} className="story-item">
         <div className="story-row">
-          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={story.storyteller} total={length} trailing={<button
+          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={`${story.storyteller} · ${story.relationship}`} total={length} trailing={<button
             className="more-button"
             onClick={() => toggleActions(story.id)}
             aria-label={`More for ${story.title}`}
@@ -243,7 +243,7 @@ export default function StoryLibrary({
             compact
             clips={clipsFor(story)}
             title={story.replacedBy ? `${story.title} (before an edit)` : story.title}
-            details={left}
+            details={`${story.storyteller} · ${story.relationship} · ${left}`}
             total={storyLength(story)}
             trailing={(
               <button className="restore-button" onClick={() => restore(story)} disabled={busy || target === null}>

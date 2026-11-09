@@ -4,7 +4,7 @@ import StoryEditor from './StoryEditor.jsx';
 import { loadStoryAudio, replaceStoryAudio, splitClips } from './storage.js';
 import { RECOVERY_DAYS, SET_MAX, STORY_MAX, formatTime, setKey, setName, storyLength } from './stories.js';
 
-// Edit a saved story (from Listen to Stories): open it in the editor, then save the edited audio
+// Edit a saved story (from Listen and Edit Stories): open it in the editor, then save the edited audio
 // in its place. The story may grow back up to 5:00, as long as its set stays at or under 11:00.
 export default function EditStory({ groupId, story, summary, onSaved, onCancel }) {
   const [clips, setClips] = useState(null); // { name, story }

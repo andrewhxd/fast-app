@@ -182,6 +182,17 @@ describe('stories', () => {
 
   test('a member saves a story with the most audio allowed (5 chunks)', () =>
     assertSucceeds(saveStory(as(JEFF), 's2', 5_000_000)));
+  test('a member saves new, custom and older relationships', async () => {
+    for (const [index, relationship] of ['Sibling', 'Partner', 'Spouse', 'Child', 'Family friend', 'Brother', 'Sister'].entries()) {
+      await assertSucceeds(saveStory(as(JEFF), `relationship${index}`, 100, { relationship }));
+    }
+  });
+  test('a relationship must contain text and be at most 100 characters', async () => {
+    for (const relationship of ['', '   ', 'x'.repeat(101), 42]) {
+      await assertFails(saveStory(as(JEFF), 'invalid-relationship', 100, { relationship }));
+    }
+    await assertSucceeds(saveStory(as(JEFF), 'long-relationship', 100, { relationship: 'x'.repeat(100) }));
+  });
   test('others cannot save into the group', () => assertFails(saveStory(as(MIA), 's2', 100)));
   test('nobody saves into a group they are not in', async () => {
     await env.withSecurityRulesDisabled((context) =>
