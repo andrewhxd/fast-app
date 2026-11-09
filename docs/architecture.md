@@ -136,6 +136,7 @@ When seeking to another clip, the player waits for its metadata before applying 
 - `day` is the date on the playing device's calendar (`localDay()`), so a set isn't repeated on the same day.
 - The session is saved the first time Play is tapped (`ClipPlayer`'s `onPlay`), with the checklist keys (`PREPARE`) and the signs of being awake (`AWAKE`).
 Canceling before that saves nothing. If saving fails, the set keeps playing and an error says so.
+- The sound check is a chime made in the browser (`chimeWav()` in `src/chime.js`): four rising bell notes, about 3 seconds, normalized to about a voice recording's loudness, so the volume set with it suits the stories.
 - The hearing aid question shows until a care team has answered it, then the checklist adds "hearing aid in place" for a patient who uses one.
 The eligibility survey is meant to ask it, once it's built.
 - While the app is being tested there's no gate: any set with stories can be played. Later, playing opens only once a clinician approves all 4 sets.

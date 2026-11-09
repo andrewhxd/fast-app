@@ -193,7 +193,7 @@ Only one player plays at a time, and every story's audio downloads in the backgr
 The set and individual story players have seek bars that move through the name and story recordings.
 - **Play Stories** (Home, or Play in the menu), in 3 steps.
 For testing, any set with stories can be played; later, playing opens only once all 4 sets are approved.
-  1. **Get ready**: the first time, whether the patient uses a hearing aid (saved for the care team); a sound check that plays the first story's name recording; and a checklist (hearing aid in place if they use one, the patient told, earbuds in, door closed and room quiet, out of view).
+  1. **Get ready**: the first time, whether the patient uses a hearing aid (saved for the care team); a sound check that plays a short chime (`src/chime.js`); and a checklist (hearing aid in place if they use one, the patient told, earbuds in, door closed and room quiet, out of view).
 Continue stays greyed out until every item is ticked.
   2. **Is Sam awake?**: tick the signs of being awake.
 With none, the app suggests waiting an hour or gently waking them, and offers **Play anyway** or **Not now**.
@@ -317,6 +317,7 @@ Everything else is denied.
 - `src/PlaySession.jsx`: playing a set to the patient: the checklists, then the set.
 - `src/playing.js`: the playing rules: the checklist items, the signs of being awake, and picking a random set and story order.
 - `src/sessions.js`: saves and lists the sessions played, in Firestore.
+- `src/chime.js`: makes the sound check's chime, as a WAV file.
 - `src/ClipPlayer.jsx`: plays several clips back to back as one, as a full player or a compact row.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.

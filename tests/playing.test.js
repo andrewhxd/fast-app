@@ -1,11 +1,12 @@
 // Tests for picking what to play (src/playing.js): which sets can play today, the random pick and
-// the shuffled story order. `npm run test:unit`.
+// the shuffled story order, and the sound check's chime (src/chime.js). `npm run test:unit`.
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   localDay, pickSet, playableSets, prepareItems, shuffled,
 } from '../src/playing.js';
+import { CHIME_DURATION, chimeSamples, chimeWav } from '../src/chime.js';
 
 const story = (affect, setNumber, id) => ({ id, affect, setNumber });
 const stories = [story('happy', 1, 'a'), story('happy', 2, 'b'), story('challenging', 1, 'c'), story('happy', 1, 'd')];
@@ -82,5 +83,22 @@ describe('the checklist and the day', () => {
 
   test('the day on this device', () => {
     assert.equal(localDay(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+  });
+});
+
+describe('the sound check chime', () => {
+  test('lasts as long as it says, with nothing too loud', () => {
+    const samples = chimeSamples();
+    assert.equal(Math.round(samples.length / 22_050 * 1000), CHIME_DURATION);
+    const loudest = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
+    assert.ok(loudest > 0.3 && loudest <= 0.33);
+    assert.equal(samples.at(-1), 0); // fades out, so it doesn't end with a click
+  });
+
+  test('is a playable WAV file', async () => {
+    const bytes = new Uint8Array(await chimeWav().arrayBuffer());
+    assert.equal(String.fromCharCode(...bytes.slice(0, 4)), 'RIFF');
+    assert.equal(String.fromCharCode(...bytes.slice(8, 12)), 'WAVE');
+    assert.equal(bytes.length, 44 + chimeSamples().length * 2);
   });
 });

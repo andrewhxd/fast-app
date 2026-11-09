@@ -78,7 +78,7 @@ The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one settin
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
 Approval isn't built, so for testing any set with stories can be played, and Home says so under the Play button.
 - **Playing starts with a checklist** (slides 24 and 26), used at a bedside, so each item is a big row that's easy to tap.
-First "Get ready": a sound check (the first story's name recording, heard through the earbuds) and the checklist; Continue stays greyed out until every item is ticked.
+First "Get ready": a sound check (a short chime the app makes itself, heard through the earbuds, at about a voice's loudness) and the checklist; Continue stays greyed out until every item is ticked.
 Then "Is Sam awake?": the 7 signs of being awake. With none ticked, the app suggests waiting an hour or gently waking them, but still offers "Play anyway".
 Then the set plays on a card in its affect's color, showing the time left, and ends with "Take the earbuds out".
 Screens use the care team's name for the patient, since that's the name the family entered.

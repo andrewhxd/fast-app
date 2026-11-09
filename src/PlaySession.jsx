@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ClipPlayer from './ClipPlayer.jsx';
+import { CHIME_DURATION, chimeWav } from './chime.js';
 import NavBar from './NavBar.jsx';
 import { setHearingAid } from './group.js';
 import { CheckIcon } from './icons.jsx';
@@ -55,8 +56,8 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
     };
   }, [group.id]);
 
-  // The sound check plays the first story's name recording: a few seconds of a real voice.
-  const soundCheck = useMemo(() => clips && clips.slice(0, 1), [clips]);
+  // The sound check plays a short chime, made in the browser, so it's ready right away.
+  const soundCheck = useMemo(() => [{ blob: chimeWav(), duration: CHIME_DURATION }], []);
 
   const items = prepareItems(hearingAid === true);
   const ready = hearingAid !== undefined && items.every((item) => prepared.includes(item.key));
@@ -172,7 +173,7 @@ export default function PlaySession({ group, stories, onHearingAid, onDone, onCa
               <p className="card-text">
                 Put the earbuds in your own ears and play the sound check. Set the volume so it&apos;s clear and comfortable.
               </p>
-              <ClipPlayer clips={soundCheck} compact title="Sound check" details="The start of the set" />
+              <ClipPlayer clips={soundCheck} compact title="Sound check" details="A short chime" />
             </section>
 
             <Checklist
