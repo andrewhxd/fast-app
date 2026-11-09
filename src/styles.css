@@ -1415,6 +1415,34 @@ body:has(.guide[open]) { overflow: hidden; }
   outline: 3px solid var(--primary);
 }
 
+/* The access level choices (Care team): a round mark, the level's name, and what it can do. */
+.check-box.round {
+  border-radius: 50%;
+}
+
+.access-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.access-text strong {
+  font-weight: 600;
+}
+
+.access-text span {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.change-access {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 /* "Patient may not be awake yet": the advice under the bold question reads as plain text. */
 .confirm p.card-text {
   font-weight: 400;

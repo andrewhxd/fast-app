@@ -20,7 +20,8 @@ function nextStep(summary) {
 // The home screen: whose care team this is, progress on the 4 story sets, and the ways in:
 // recording, listening, and playing stories to the patient.
 // On a computer there's room to show the sets themselves too, each with its own Record button.
-// `summary` is null while the stories load.
+// `summary` is null while the stories load. `onRecord`, `onRecordInSet` and `onPlay` are null when
+// the person's access level doesn't include them.
 export default function Home({
   groupName, canSwitch, onSwitch, notice, summary, menuButton, onRecord, onRecordInSet, onListen, onPlay,
 }) {
@@ -77,19 +78,25 @@ export default function Home({
         )}
 
         <div className="actions home-actions">
-          <button className="pill pill-primary" onClick={onRecord}>
-            <span className="record-dot soft" aria-hidden="true" />
-            Record a story
-          </button>
-          <button className="pill pill-white" onClick={onListen}>
+          {onRecord && (
+            <button className="pill pill-primary" onClick={onRecord}>
+              <span className="record-dot soft" aria-hidden="true" />
+              Record a story
+            </button>
+          )}
+          <button className={`pill ${onRecord ? 'pill-white' : 'pill-primary'}`} onClick={onListen}>
             <HeadphonesIcon />
-            Listen and Edit Stories
+            {onRecord ? 'Listen and Edit Stories' : 'Listen to Stories'}
           </button>
-          <button className="pill pill-white" onClick={onPlay}>
-            <PlayOutlineIcon />
-            Play Stories
-          </button>
-          <p className="footnote">For testing, any set with stories can be played. Later, playing opens once all 4 sets are approved.</p>
+          {onPlay && (
+            <>
+              <button className="pill pill-white" onClick={onPlay}>
+                <PlayOutlineIcon />
+                Play Stories
+              </button>
+              <p className="footnote">For testing, any set with stories can be played. Later, playing opens once all 4 sets are approved.</p>
+            </>
+          )}
         </div>
       </main>
     </>

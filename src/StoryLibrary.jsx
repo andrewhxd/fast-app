@@ -18,8 +18,10 @@ import {
 // 11:00 are offered.
 // `onChanged(message)` reloads the stories after a change; `notice` says what the last change did,
 // until `onClearNotice()` is called. `onEdit(story)` opens the editor.
+// Without `canEdit` (someone who can only play), it's for listening: no Rearrange, ⋯, Record or
+// Recently deleted.
 export default function StoryLibrary({
-  groupId, stories, deletedStories, summary, notice, backButton, onChanged, onClearNotice, onRecord, onEdit,
+  groupId, stories, deletedStories, summary, notice, backButton, canEdit, onChanged, onClearNotice, onRecord, onEdit,
 }) {
   const [arranging, setArranging] = useState(false);
   const [selectedId, setSelectedId] = useState(''); // the story picked to move, while arranging
@@ -195,7 +197,7 @@ export default function StoryLibrary({
     return (
       <div key={story.id} className="story-item">
         <div className="story-row">
-          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={`${story.storyteller} · ${story.relationship}`} total={length} trailing={<button
+          <ClipPlayer compact clips={clipsFor(story)} title={story.title} details={`${story.storyteller} · ${story.relationship}`} total={length} trailing={canEdit && <button
             className="more-button"
             onClick={() => toggleActions(story.id)}
             aria-label={`More for ${story.title}`}
@@ -245,14 +247,14 @@ export default function StoryLibrary({
             title={story.replacedBy ? `${story.title} (before an edit)` : story.title}
             details={`${story.storyteller} · ${story.relationship} · ${left}`}
             total={storyLength(story)}
-            trailing={(
+            trailing={canEdit && (
               <button className="restore-button" onClick={() => restore(story)} disabled={busy || target === null}>
                 Restore
               </button>
             )}
           />
         </div>
-        {target === null && (
+        {canEdit && target === null && (
           <p className="hint restore-hint">
             Both {story.affect} sets are too full for it ({formatTime(storyLength(story))}). Make room first.
           </p>
@@ -275,7 +277,7 @@ export default function StoryLibrary({
       }
       return <p className="add-row muted">No room to move it here ({formatTime(SET_MAX - total)} left)</p>;
     }
-    if (setStatus(total) !== 'short') return null;
+    if (!canEdit || setStatus(total) !== 'short') return null;
     return (
       <button className="add-row" onClick={() => onRecord(affect, setNumber)}>
         <PlusIcon />
@@ -337,7 +339,7 @@ export default function StoryLibrary({
     <>
       <NavBar
         left={backButton}
-        right={stories.length > 0 && (
+        right={canEdit && stories.length > 0 && (
           <button className="nav-button" onClick={arranging ? stopArranging : () => startArranging()} disabled={busy}>
             {arranging ? 'Done' : 'Rearrange'}
           </button>
@@ -361,7 +363,7 @@ export default function StoryLibrary({
           ))}
         </div>
 
-        {!arranging && deletedStories.length > 0 && (
+        {canEdit && !arranging && deletedStories.length > 0 && (
           <section className="group-section" aria-label="Recently deleted">
             <h2 className="group-label">Recently deleted</h2>
             <p className="hint">Deleted stories stay here for {RECOVERY_DAYS} days, then they&apos;re removed for good.</p>

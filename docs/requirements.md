@@ -24,9 +24,8 @@ A "treatment" is one patient's whole course of therapy: its people, its 4 story 
 
 ## Setup and administration (slides 3 to 6) - Partly built
 
-Built: sign-in with Google or email and password (with password reset), starting a care team (a "group" in the code), invite links tied to an email address, the list of people and pending invites, and removing people.
-There are only two roles so far: the lead caregiver, who owns the group, and members, who can do everything else.
-Not built: the other access levels, the clinician questions, handing over the lead, and emailing invites from the app.
+Built: sign-in with Google or email and password (with password reset), starting a care team (a "group" in the code), invite links tied to an email address, the list of people and pending invites, removing people, and the 4 access levels (chosen when inviting, changed or removed later, and enforced by the database rules).
+Not built: the clinician questions, handing over the lead, changing the clinician, and emailing invites from the app.
 
 - The lead caregiver starts a treatment and enters their name, email, the patient's first and last name, and their relationship to the patient (caregiver or clinician).
 - A caregiver is asked whether a clinician will take part.

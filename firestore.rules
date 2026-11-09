@@ -7,7 +7,13 @@ rules_version = '2';
 // The FAST app prototype, in its own Firebase project (fast-app-cs499).
 // Everyone signs in with Firebase Authentication (Google, or an email address and a password).
 // Stories belong to a group (a care team for one patient), and only the group's members can
-// read or change them. Writes are strictly validated, and everything else is denied.
+// read them. Each member has an access level (slide 4), which decides what else they can do:
+//   - "administrator": invite and remove people and change their access, record and edit stories, play
+//   - "clinician": record and edit stories, play (the clinician's own tools aren't built yet)
+//   - "stories": record and edit stories
+//   - "player": play story sets
+// The owner (the lead caregiver) can do everything, and members who joined before access levels
+// existed count as "stories". Writes are strictly validated, and everything else is denied.
 //
 // Collection: groups/{groupId}
 // Group ID: lowercase letters, numbers and hyphens (the app makes 20 random characters).
@@ -18,30 +24,35 @@ rules_version = '2';
 //   - createdAt, updatedAt: timestamp - server time of the create
 // Field added later, once:
 //   - hearingAid: bool - whether the patient uses a hearing aid or other hearing accommodation,
-//     answered by any member the first time a set is played; it can't be changed after that
+//     answered by a member who can play the first time a set is played; it can't be changed after that
 // Only members can read a group. It's created together with its owner's member document.
 //
 // Subcollection: groups/{groupId}/members/{uid}
 // Document ID: the member's uid
-// Fields (never change after create):
+// Fields (only access changes after create):
 //   - uid: string (required) - the same as the document ID
 //   - name: string (required, 1-100 chars) - the member's name
 //   - email: string (required) - the member's sign-in email address, lowercase
 //   - joinedAt: timestamp (required) - server time of joining
+//   - access: string (optional) - the access level: "administrator" for the owner, and the
+//     invite's level for everyone else; absent means "stories" (members from before access levels,
+//     and older versions of the app, which don't write it)
 //   - invite: string (optional) - the ID of the invite they accepted; absent for the owner
 // Members of a group can read each other's member documents, and everyone can find their own
 // (a collection group query on uid). A member is added only by starting a group or by accepting
-// an invite. The owner can remove anyone else, and anyone but the owner can leave.
+// an invite. The owner and administrators can change anyone else's access (never their own or the
+// owner's) and remove them; anyone but the owner can leave.
 //
 // Subcollection: groups/{groupId}/invites/{inviteId}
 // Document ID: auto-generated; it's the secret part of the invite link
 // Fields (all required, no others, never change):
 //   - email: string - the lowercase email address the invite is for
 //   - groupName: string - the group's name, so the invitee can see it before joining
-//   - invitedBy: string - the owner's uid
-//   - invitedByName: string (1-100 chars) - the owner's name
+//   - invitedBy: string - the uid of who invited them (the owner or an administrator)
+//   - invitedByName: string (1-100 chars) - their name
+//   - access: string (optional) - the access level the person joins with; absent means "stories"
 //   - createdAt: timestamp - server time of the create
-// Only the owner creates, lists and cancels invites. The person it's for (signed in with that
+// Only the owner and administrators create, list and cancel invites. The person it's for (signed in with that
 // email address) can read it, and uses it up when joining, which needs a confirmed email address.
 //
 // Subcollection: groups/{groupId}/sessions/{sessionId}
@@ -59,8 +70,8 @@ rules_version = '2';
 //     and "respondsToTouch"
 // Field added later, once:
 //   - endedAt: timestamp - server time when the set played to the end; absent if it was stopped
-// Members can read a group's sessions and save their own. The member who played one adds endedAt;
-// nothing else changes, and nobody can delete one.
+// Members can read a group's sessions, and those who can play save their own. The member who played
+// one adds endedAt; nothing else changes, and nobody can delete one.
 //
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
@@ -167,6 +178,31 @@ service cloud.firestore {
       return isSignedIn() && get(groupPath(groupId)).data.ownerId == request.auth.uid;
     }
 
+    // Must match ACCESS in src/access.js.
+    function isAccessLevel(value) {
+      return value in ['administrator', 'clinician', 'stories', 'player'];
+    }
+
+    // The signed-in member's access level; members from before access levels have "stories".
+    function accessIn(groupId) {
+      return get(memberPath(groupId, request.auth.uid)).data.get('access', 'stories');
+    }
+
+    // Invite and remove people, and change their access: the owner and administrators.
+    function canManage(groupId) {
+      return isMember(groupId) && (isOwner(groupId) || accessIn(groupId) == 'administrator');
+    }
+
+    // Record, edit, move, delete and restore stories: everyone but players.
+    function canRecord(groupId) {
+      return isMember(groupId) && (isOwner(groupId) || accessIn(groupId) in ['administrator', 'clinician', 'stories']);
+    }
+
+    // Play story sets to the patient: everyone but those who only record.
+    function canPlay(groupId) {
+      return isMember(groupId) && (isOwner(groupId) || accessIn(groupId) in ['administrator', 'clinician', 'player']);
+    }
+
     // How long a deleted story can be restored before it may be removed for good.
     // Must match RECOVERY_DAYS in src/stories.js.
     function recoveryPeriod() {
@@ -214,7 +250,8 @@ service cloud.firestore {
     // A member document for the signed-in person, with their own email address.
     function isValidMember(memberId, data) {
       return data.keys().hasAll(['uid', 'name', 'email', 'joinedAt'])
-        && data.keys().hasOnly(['uid', 'name', 'email', 'joinedAt', 'invite'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'joinedAt', 'access', 'invite'])
+        && (!('access' in data) || isAccessLevel(data.access))
         && memberId == request.auth.uid
         && data.uid == memberId
         && isStringOfLength(data.name, 1, 100)
@@ -222,22 +259,34 @@ service cloud.firestore {
         && data.joinedAt == request.time;
     }
 
-    // Starting a group: the owner's own member document, written in the same batch as the new group.
+    // Starting a group: the owner's own member document, as an administrator, written in the same
+    // batch as the new group.
     function isStartingGroup(groupId, data) {
       return !('invite' in data)
+        && data.get('access', 'administrator') == 'administrator'
         && !exists(groupPath(groupId))
         && getAfter(groupPath(groupId)).data.ownerId == request.auth.uid;
     }
 
-    // Accepting an invite: it's for this person's confirmed email address, and it's used up
-    // (deleted) in the same batch, so it can't be used twice.
+    // Accepting an invite: it's for this person's confirmed email address, they join with its access
+    // level, and it's used up (deleted) in the same batch, so it can't be used twice.
     function isAcceptingInvite(groupId, data) {
       return 'invite' in data
         && data.invite is string
         && isEmailVerified()
         && exists(invitePath(groupId, data.invite))
         && get(invitePath(groupId, data.invite)).data.email == myEmail()
+        && data.get('access', 'stories') == get(invitePath(groupId, data.invite)).data.get('access', 'stories')
         && !existsAfter(invitePath(groupId, data.invite));
+    }
+
+    // Changing someone's access level: only that field, to a real level, and never one's own or the
+    // owner's.
+    function isChangingAccess(groupId, memberId) {
+      return memberId != request.auth.uid
+        && memberId != get(groupPath(groupId)).data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['access'])
+        && isAccessLevel(request.resource.data.access);
     }
 
     // Answering whether the patient uses a hearing aid: added once, and nothing else changes.
@@ -249,8 +298,9 @@ service cloud.firestore {
 
     function isValidInvite(groupId, data) {
       let fields = ['email', 'groupName', 'invitedBy', 'invitedByName', 'createdAt'];
-      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields.concat(['access']))
         && isValidEmail(data.email)
+        && (!('access' in data) || isAccessLevel(data.access))
         && data.groupName == get(groupPath(groupId)).data.name
         && data.invitedBy == request.auth.uid
         && isStringOfLength(data.invitedByName, 1, 100)
@@ -374,7 +424,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && isValidGroup(groupId, request.resource.data)
         && existsAfter(memberPath(groupId, request.auth.uid));
-      allow update: if isMember(groupId) && isSettingHearingAid();
+      allow update: if canPlay(groupId) && isSettingHearingAid();
       allow delete: if false;
 
       match /members/{memberId} {
@@ -382,25 +432,26 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && isValidMember(memberId, request.resource.data)
           && (isStartingGroup(groupId, request.resource.data) || isAcceptingInvite(groupId, request.resource.data));
-        allow update: if false;
-        // The owner removes someone else, or a member leaves. The owner can't leave or be removed.
+        allow update: if canManage(groupId) && isChangingAccess(groupId, memberId);
+        // The owner or an administrator removes someone else, or a member leaves. The owner can't
+        // leave or be removed.
         allow delete: if isSignedIn()
           && memberId != get(groupPath(groupId)).data.ownerId
-          && (isOwner(groupId) || memberId == request.auth.uid);
+          && (canManage(groupId) || memberId == request.auth.uid);
       }
 
       match /invites/{inviteId} {
-        allow read: if isOwner(groupId) || (myEmail() != '' && resource.data.email == myEmail());
-        allow create: if isOwner(groupId) && isValidInvite(groupId, request.resource.data);
+        allow read: if canManage(groupId) || (myEmail() != '' && resource.data.email == myEmail());
+        allow create: if canManage(groupId) && isValidInvite(groupId, request.resource.data);
         allow update: if false;
-        // The owner cancels it, or the person it's for uses it up when joining.
-        allow delete: if isOwner(groupId)
+        // The owner or an administrator cancels it, or the person it's for uses it up when joining.
+        allow delete: if canManage(groupId)
           || (isEmailVerified() && myEmail() != '' && resource.data.email == myEmail());
       }
 
       match /sessions/{sessionId} {
         allow read: if isMember(groupId);
-        allow create: if isMember(groupId) && isValidSession(request.resource.data);
+        allow create: if canPlay(groupId) && isValidSession(request.resource.data);
         allow update: if isMember(groupId) && isEndingSession();
         allow delete: if false;
       }
@@ -415,10 +466,11 @@ service cloud.firestore {
       allow read: if isDemoTreatment(treatmentId) && isMember(resource.data.group);
       allow create: if isDemoTreatment(treatmentId)
         && isValidStory(treatmentId, storyId, request.resource.data)
-        && isMember(request.resource.data.group);
-      allow update: if isDemoTreatment(treatmentId) && isMember(resource.data.group)
+        && canRecord(request.resource.data.group);
+      allow update: if isDemoTreatment(treatmentId) && canRecord(resource.data.group)
         && (isValidStoryMove() || isValidSoftDelete(treatmentId) || isValidRestore());
       // Removed for good only after the recovery period, and only together with all of its chunks.
+      // Any member can, since the app does it whenever someone loads the stories (see storage.js).
       allow delete: if isDemoTreatment(treatmentId)
         && isMember(resource.data.group)
         && isPastRecovery()
@@ -432,7 +484,7 @@ service cloud.firestore {
         allow read: if isDemoTreatment(treatmentId) && isMember(get(storyPath(treatmentId, storyId)).data.group);
         allow create: if isDemoTreatment(treatmentId)
           && isValidStoryChunk(treatmentId, storyId, chunkId, request.resource.data)
-          && isMember(getAfter(storyPath(treatmentId, storyId)).data.group);
+          && canRecord(getAfter(storyPath(treatmentId, storyId)).data.group);
         allow update: if false;
         // Removed only together with the story it belongs to (which needs the recovery period to be over).
         allow delete: if isDemoTreatment(treatmentId)

@@ -338,27 +338,28 @@ async function signInAs({ name, email }) {
 async function startGroup(user, id, name) {
   const batch = writeBatch(db);
   batch.set(doc(db, 'groups', id), { id, name, ownerId: user.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  batch.set(doc(db, 'groups', id, 'members', user.uid), memberFor(user));
+  batch.set(doc(db, 'groups', id, 'members', user.uid), memberFor(user, 'administrator'));
   await batch.commit();
 }
 
-function memberFor(user) {
-  return { uid: user.uid, name: user.displayName, email: user.email, joinedAt: serverTimestamp() };
+function memberFor(user, access) {
+  return { uid: user.uid, name: user.displayName, email: user.email, joinedAt: serverTimestamp(), access };
 }
 
-// Invites an email address to a group the signed-in account owns, like createInvite(). Returns its ID.
-async function invite(user, groupId, groupName, email) {
+// Invites an email address to a group the signed-in account owns, with an access level, like
+// createInvite(). Returns its ID.
+async function invite(user, groupId, groupName, email, access) {
   const inviteRef = doc(collection(db, 'groups', groupId, 'invites'));
   await setDoc(inviteRef, {
-    email, groupName, invitedBy: user.uid, invitedByName: user.displayName, createdAt: serverTimestamp(),
+    email, groupName, invitedBy: user.uid, invitedByName: user.displayName, access, createdAt: serverTimestamp(),
   });
   return inviteRef.id;
 }
 
-// Accepts an invite as the signed-in account, like acceptInvite().
-async function join(user, groupId, inviteId) {
+// Accepts an invite as the signed-in account, with its access level, like acceptInvite().
+async function join(user, groupId, inviteId, access) {
   const batch = writeBatch(db);
-  batch.set(doc(db, 'groups', groupId, 'members', user.uid), { ...memberFor(user), invite: inviteId });
+  batch.set(doc(db, 'groups', groupId, 'members', user.uid), { ...memberFor(user, access), invite: inviteId });
   batch.delete(doc(db, 'groups', groupId, 'invites', inviteId));
   await batch.commit();
 }
@@ -379,7 +380,8 @@ connectFirestoreEmulator(db, host, Number(port));
 const auth = getAuth(app);
 connectAuthEmulator(auth, `http://${authEmulator}`, { disableWarnings: true });
 
-// The demo accounts all share one password. Ann leads Sam Smith's care team, with Jeff as a member;
+// The demo accounts all share one password. Ann leads Sam Smith's care team, with Jeff as a member who
+// records and edits (Mia is invited to play, Dave as a clinician);
 // Jeff and Mia each lead a small group of their own, so the groups' stories can be told apart.
 const ANN = { name: 'Ann Smith', email: 'ann@example.com' };
 const JEFF = { name: 'Jeff Smith', email: 'jeff@example.com' };
@@ -407,16 +409,16 @@ for (const story of STORIES) await saveStory(db, story, 'default');
 // A deleted story, so Listen's Recently deleted has something to restore.
 const deleted = await saveStory(db, ['Grandpa\'s fishing trip', 'Ann Smith', 'Mother', 'happy', 1, '1:05'], 'default');
 await updateDoc(deleted, { deletedAt: serverTimestamp(), deletedBy: ann.uid });
-const jeffInvite = await invite(ann, 'default', 'Sam Smith', JEFF.email);
-await invite(ann, 'default', 'Sam Smith', 'dave@example.com'); // left pending
-const miaInvite = await invite(ann, 'default', 'Sam Smith', MIA.email); // left pending, to try joining
+const jeffInvite = await invite(ann, 'default', 'Sam Smith', JEFF.email, 'stories');
+await invite(ann, 'default', 'Sam Smith', 'dave@example.com', 'clinician'); // left pending
+const miaInvite = await invite(ann, 'default', 'Sam Smith', MIA.email, 'player'); // left pending, to try joining
 
 await signOut(auth);
 await signInWithEmailAndPassword(auth, JEFF.email, PASSWORD);
-await join(auth.currentUser, 'default', jeffInvite);
+await join(auth.currentUser, 'default', jeffInvite, 'stories');
 await signOut(auth);
 
 console.log(`Added ${STORIES.length + GROUP_STORIES.length} sample stories in 3 groups (and 1 deleted one), and these accounts (password "${PASSWORD}"):`);
-console.log(`  ${ANN.email}   leads Sam Smith's care team (Jeff is a member; Mia and dave@example.com are invited)`);
-console.log(`  ${JEFF.email}  member of Sam Smith, leads Family A`);
-console.log(`  ${MIA.email}   leads Family B. Her invite to Sam Smith: http://localhost:5173/?group=default&invite=${miaInvite}`);
+console.log(`  ${ANN.email}   leads Sam Smith's care team (Jeff records and edits; Mia is invited to play, dave@example.com as clinician)`);
+console.log(`  ${JEFF.email}  records and edits in Sam Smith's care team, leads Family A`);
+console.log(`  ${MIA.email}   leads Family B. Her invite to play for Sam Smith: http://localhost:5173/?group=default&invite=${miaInvite}`);
