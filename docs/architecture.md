@@ -80,7 +80,7 @@ Stories without a `group` (saved before groups existed) can't be read by anyone 
 The name clip and story clip are stored back to back as one byte stream, and `nameSize` says where to split them (`splitClips()`).
 - **Writes are atomic batches.** A story and all its chunks are written in one batch, and removed for good in one batch.
 The rules enforce this with `existsAfter()` and `getAfter()`, so a half-saved or half-deleted story can't exist.
-- **Saved stories change only by moving, deleting and restoring.** Moving or swapping updates only `setNumber`; deleting adds `deletedAt` and `deletedBy`; restoring removes them (and may change `setNumber`). The rules reject any other update, and a deleted story can't move.
+- **Saved stories change only by moving, deleting and restoring.** Moving or swapping updates only `affect` and `setNumber`; deleting adds `deletedAt` and `deletedBy`; restoring removes them (and may change `setNumber`). The rules reject any other update, and a deleted story can't move.
 - **Deleting is a soft delete.** A deleted story keeps its audio and can be restored for 30 days (`RECOVERY_DAYS`); the rules refuse to remove it for good any sooner.
 Editing a saved story's audio (`replaceStoryAudio()`) writes a new story and deletes the old one (with `replacedBy` naming the new one) in a single batch, so the earlier version can be restored too.
 The edited story gets a new id and a new `createdAt`, so it moves to the end of its set's list.

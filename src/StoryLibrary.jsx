@@ -5,7 +5,7 @@ import { GROUPS } from './StorySets.jsx';
 import { CheckIcon, MoreIcon, PlusIcon } from './icons.jsx';
 import { deleteStory, loadStoryAudio, moveStory, restoreStory, splitClips, swapStories } from './storage.js';
 import {
-  RECOVERY_DAYS, SET_MAX, fitsInSet, formatTime, recoveryDaysLeft, setKey, setName, setStatus, setStatusText,
+  RECOVERY_DAYS, SET_MAX, SETS, fitsInSet, formatTime, recoveryDaysLeft, setKey, setName, setStatus, setStatusText,
   storiesInSet, storyLength, tintClass,
 } from './stories.js';
 
@@ -13,9 +13,9 @@ import {
 // Play a whole set or one story; each story's ⋯ opens Edit, Move and Delete.
 // Deleted stories (`deletedStories`) are listed under "Recently deleted", where they can be played
 // and restored for RECOVERY_DAYS days.
-// Rearrange (or Move) moves stories between the two sets of the same affect: tap a story, then a
-// story in the other set to swap them, or "Move Here". Only moves that keep both sets at or under
-// 11:00 are offered.
+// Rearrange (or Move) moves stories between sets, including to the other affect (a happy story can
+// become a challenging one): tap a story, then a story in another set to swap them, or "Move here".
+// Only moves that keep both sets at or under 11:00 are offered.
 // `onChanged(message)` reloads the stories after a change; `notice` says what the last change did,
 // until `onClearNotice()` is called. `onEdit(story)` opens the editor.
 export default function StoryLibrary({
@@ -81,12 +81,12 @@ export default function StoryLibrary({
   const selected = arranging ? stories.find((s) => s.id === selectedId) : undefined;
   const totalOf = (story) => summary[setKey(story.affect, story.setNumber)].total;
 
-  // While a story is picked, the other set with the same affect is where it can go.
+  // While a story is picked, every other set (of either affect) is where it can go.
   function isTargetSet(affect, setNumber) {
-    return Boolean(selected) && selected.affect === affect && selected.setNumber !== setNumber;
+    return Boolean(selected) && !(selected.affect === affect && selected.setNumber === setNumber);
   }
 
-  // A swap keeps both sets at or under 11:00.
+  // A swap keeps both sets at or under 11:00. The two stories are always in different sets.
   function canSwap(a, b) {
     const delta = storyLength(b) - storyLength(a);
     return totalOf(a) + delta <= SET_MAX && totalOf(b) - delta <= SET_MAX;
@@ -160,9 +160,9 @@ export default function StoryLibrary({
     }
   }
 
-  function moveSelectedTo(setNumber) {
+  function moveSelectedTo(affect, setNumber) {
     onClearNotice();
-    change(() => moveStory(selected, setNumber, groupId), `Moved "${selected.title}" to ${setName(selected.affect, setNumber)}.`);
+    change(() => moveStory(selected, affect, setNumber, groupId), `Moved "${selected.title}" to ${setName(affect, setNumber)}.`);
   }
 
   function storyRow(story) {
@@ -267,7 +267,7 @@ export default function StoryLibrary({
       if (!isTargetSet(affect, setNumber)) return null;
       if (fitsInSet(total, storyLength(selected))) {
         return (
-          <button className="add-row" onClick={() => moveSelectedTo(setNumber)} disabled={busy}>
+          <button className="add-row" onClick={() => moveSelectedTo(affect, setNumber)} disabled={busy}>
             <PlusIcon />
             Move &quot;{selected.title}&quot; here
           </button>
@@ -325,12 +325,12 @@ export default function StoryLibrary({
     );
   }
 
-  let arrangeHelp = 'Tap the story you want to move. Happy stories stay in happy sets, and challenging stories in challenging sets.';
+  let arrangeHelp = 'Tap the story you want to move. It can go to any set, including one with the other affect.';
   if (selected) {
-    const otherNumber = selected.setNumber === 1 ? 2 : 1;
-    const other = setName(selected.affect, otherNumber);
-    const canMove = fitsInSet(summary[setKey(selected.affect, otherNumber)].total, storyLength(selected));
-    arrangeHelp = `Now tap a story in ${other} to swap it with "${selected.title}"${canMove ? ', or tap Move here' : ''}.`;
+    const canMove = SETS.some(({ affect, setNumber }) => (
+      isTargetSet(affect, setNumber) && fitsInSet(summary[setKey(affect, setNumber)].total, storyLength(selected))
+    ));
+    arrangeHelp = `Now tap a story in another set to swap it with "${selected.title}"${canMove ? ', or tap Move here in the set you want' : ''}.`;
   }
 
   return (

@@ -91,8 +91,8 @@ So there are four tools: shorten long pauses (one switch), trim the start and en
 A readout always shows the length before and after, and whether it fits.
 On the main editor, a playhead moves across the waveform in proportion to the edited story's playback time.
 Tap the waveform or use the keyboard to seek, and pause or resume the preview without losing your place.
-- **Rearrange keeps the affect** (slide 19): stories move only between sets of the same affect.
-Tap a story, then "Move here" or another story to swap with.
+- **Rearrange can change the affect** (slide 19, and the client's feedback after testing): a story can move to any other set, including one with the other affect, for when a story turns out to be challenging rather than happy.
+Tap a story, then "Move here" in a set or another story to swap with.
 "No room" and "Won't fit" explain when a move would take a set over 11:00.
 - **Back always works**: every screen is a browser history entry, so the phone's Back gesture behaves as expected.
 
