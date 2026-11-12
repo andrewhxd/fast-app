@@ -18,7 +18,8 @@ const NO_CLIPS = [];
 //   `idleLabel` shows above the bar before playback starts.
 // - compact: a small play button beside `title` and a line of `details` with the time,
 //   for a row in a list. `total` is the length to show while the audio loads.
-export default function ClipPlayer({ clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal, trailing }) {
+// `onEnded` (optional) is called when the last clip plays to the end.
+export default function ClipPlayer({ clips, tint = '', idleLabel, compact = false, title, details, total: knownTotal, trailing, onEnded }) {
   const audioRef = useRef(null);
   const [index, setIndex] = useState(0); // the clip in the player
   const [playing, setPlaying] = useState(false);
@@ -87,6 +88,7 @@ export default function ClipPlayer({ clips, tint = '', idleLabel, compact = fals
     } else {
       setPlaying(false);
       setPosition(total);
+      onEnded?.();
     }
   }
 

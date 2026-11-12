@@ -19,8 +19,9 @@ Only a care team's members can see or change its stories, which the database's s
 - Fix a story that runs long with a simple editor: trim the ends, shorten long pauses, or speed up or cut a part.
 - Listen to whole sets or single stories, seek within them, and move or swap stories between sets, even from happy to challenging.
 - Works on phones and on computers (with a sidebar layout at 960 px and wider), in light and dark mode.
+- Play a random story set to your loved one, with a checklist before and after.
 
-Separate access levels (administrator, clinician, storyteller, player), the eligibility survey, clinician approval and playing sessions to the patient are not built yet.
+Separate access levels (administrator, clinician, storyteller, player), the eligibility survey, clinician approval, and saving the end of a session and its after-playing answers are not built yet.
 
 ## Run it
 

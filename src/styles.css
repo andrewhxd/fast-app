@@ -1312,6 +1312,7 @@ body:has(.guide[open]) { overflow: hidden; }
 
 .segmented label,
 .segmented button {
+  position: relative; /* holds the hidden radio button, so it can't widen the page */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1343,6 +1344,60 @@ body:has(.guide[open]) { overflow: hidden; }
   position: absolute;
   opacity: 0;
   pointer-events: none;
+}
+
+/* A segmented control that isn't about a story's affect: the chosen answer is solid indigo. */
+.segmented.plain {
+  --tint-bg: var(--primary);
+  --tint-text: var(--on-primary);
+}
+
+/* ---------- Checklists (before and after playing a set) ---------- */
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* One item: a card with a checkbox, tapped anywhere to tick it. */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  background-color: var(--surface);
+  box-shadow: var(--shadow-small);
+  cursor: pointer;
+}
+
+.check-row:has(input:checked) {
+  background-color: var(--primary-soft);
+}
+
+.check-row input {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+/* A question on the after-playing checklist: easier to read than a form field's label. */
+.question .field-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Something to consider, not a success: a quiet grey note. */
+.notice.caution {
+  color: var(--text);
+  background-color: var(--well);
 }
 
 /* ---------- Editor ---------- */
@@ -2018,6 +2073,13 @@ body:has(.guide[open]) { overflow: hidden; }
   /* Home's Record and Listen buttons are already in the sidebar, and each set has its own Record. */
   .home-actions .pill {
     display: none;
+  }
+
+  /* Playing isn't in the sidebar, so its button stays, sized to its text. */
+  .home-actions .pill.home-play {
+    display: flex;
+    align-self: flex-start;
+    padding-inline: 2rem;
   }
 
   .home-actions .footnote {

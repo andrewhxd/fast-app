@@ -85,7 +85,8 @@ These come from the project doc ([docs/requirements.md](docs/requirements.md)) a
 - A set holds any number of stories that add up to **9:00 to 11:00**.
 - A saved story can move to any set, including one with the other affect (a happy story can become a challenging one, and the reverse), as long as both sets stay at or under 11:00.
 The client asked for this after testing (it was first built to keep the affect).
-- Randomness belongs to playback, which is not built yet: 4 sessions a day, at least 2 hours apart, each playing a random set not yet played that day, with the stories in a set in random order, for 168 sessions in all (slides 22 and 23).
+- Randomness belongs to playback: 4 sessions a day, at least 2 hours apart, each playing a random set not yet played that day, with the stories in a set in random order, for 168 sessions in all (slides 22 and 23).
+For now **Play a story set** picks any set with stories, at random, with its stories shuffled; leaving out the sets played today, the daily limit and the 2-hour gap aren't built yet.
 - Open question: the slide 10 scenario gives happy sets 9:45 to 10:15, while the user stories (slides 11 and 19) say 9:00 to 11:00.
 The app uses 9:00 to 11:00 for all 4 sets until the client says otherwise.
 
@@ -192,13 +193,22 @@ This works across affects, so a story saved as happy can be moved to a challengi
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
 The set and individual story players have seek bars that move through the name and story recordings.
+- **Play a story set** (on Home): picks a random set that has stories and shuffles its stories, then:
+  1. **Before you play**: 6 checklist items, all of which must be ticked.
+  2. **Is your loved one awake?**: the 7 awake behaviors; with none ticked it suggests trying later, but still plays.
+Tapping **Play** saves a session (`groups/{groupId}/sessions`).
+  3. **Playing**: the set plays in its color; **Stop early**, or **Continue** once it ends.
+  4. **After playing**: More, Same or Less for each of 9 behaviors, then whether they became agitated (if so, it suggests considering stopping).
+Saving the end of a session and the after-playing answers isn't built yet (`endSession()` and `saveAfter()` in `src/sessions.js`).
+The question lists are in `src/checklists.js`, and `/checklists.html` (dev only) shows the two checklists on their own.
 - The phone's back button moves between screens.
 
 ### On a computer
 
 In a window at least 960 px wide (`@media (min-width: 60rem)` in `src/styles.css`), a sidebar on the left replaces the Menu and Back buttons.
 Home also shows the 4 sets, each with its own Record button, and the sets sit in two columns, happy beside challenging.
-Recording and editing use a narrower, focused page (42rem), and the sidebar is locked until the story is finished or canceled.
+Recording, editing and playing a set use a narrower, focused page (42rem), and the sidebar is locked until the story or session is finished or canceled.
+Home keeps its **Play a story set** button, since playing isn't in the sidebar.
 
 ### Design
 
@@ -218,7 +228,7 @@ The design canvas linked above has every screen on phone and computer, the reaso
 - The eligibility survey.
 - Editing a story's title, storyteller or relationship after it's saved.
 - Clinician comments and approval, and automatically regrouping stories to fit the targets.
-- Playing story sets to the patient, the checklists, progress tracking and reminders.
+- Playing: saving the end of a session and the after-playing answers, leaving out the sets played today, the 2-hour gap, progress tracking, instructions and reminders.
 
 ## Firebase
 
@@ -250,6 +260,7 @@ The README explains how to run a fork on its own Firebase project.
 groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt
 groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
+groups/{groupId}/sessions/{sessionId}    playedBy, affect, setNumber, day, startedAt, before: { done, awake }
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt, and once deleted: deletedAt,
@@ -277,6 +288,7 @@ A full treatment (4 sets of about 10 minutes) is roughly 20 MB, so the free 1 Gi
 Every request must be signed in.
 Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
+Members read a group's sessions and save their own: every checklist item ticked, only known awake behaviors, and the server's time; a session can't be changed or deleted yet.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
 Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`affect` and `setNumber`, to a valid affect and set 1 or 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
@@ -302,6 +314,11 @@ Everything else is denied.
 - `src/audioEdit.js`: the editing engine: decoding, finding pauses, the edit plan, time-stretching (SoundTouch) and MP3 encoding (LAME).
 - `src/StoryLibrary.jsx`: the Listen screen: play, rearrange, move and delete stories.
 - `src/ClipPlayer.jsx`: plays several clips back to back as one, as a full player or a compact row.
+- `src/playing.js`: picks a random set to play and shuffles its stories.
+- `src/checklists.js`: the questions before and after playing, with the ids that are saved (mirrored in `firestore.rules`).
+- `src/BeforeChecklist.jsx`, `src/PlaySet.jsx` and `src/AfterChecklist.jsx`: the screens for playing a set.
+- `src/sessions.js`: saves each time a set is played (a session) in Firestore.
+- `src/ChecklistsPreview.jsx` (with `checklists.html`): dev only, the two checklists on their own page.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
 - `src/auth.js`: signing in and out (Google, email and password), the `useUser()` hook, and friendly sign-in error messages.

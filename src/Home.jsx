@@ -1,6 +1,6 @@
 import NavBar from './NavBar.jsx';
 import { SetGroups } from './StorySets.jsx';
-import { HeadphonesIcon } from './icons.jsx';
+import { HeadphonesIcon, PlayIcon } from './icons.jsx';
 import { SETS, SET_MIN, setKey, setName, setStatus, tintClass } from './stories.js';
 
 const MINUTE = 60_000;
@@ -17,11 +17,12 @@ function nextStep(summary) {
   );
 }
 
-// The home screen: whose care team this is, progress on the 4 story sets, and the two ways in.
+// The home screen: whose care team this is, progress on the 4 story sets, and the ways in:
+// recording, listening, and playing a random set to the patient.
 // On a computer there's room to show the sets themselves too, each with its own Record button.
 // `summary` is null while the stories load.
 export default function Home({
-  groupName, canSwitch, onSwitch, notice, summary, menuButton, onRecord, onRecordInSet, onListen,
+  groupName, canSwitch, onSwitch, notice, summary, menuButton, onRecord, onRecordInSet, onListen, onPlay,
 }) {
   const ready = summary
     ? SETS.filter((s) => setStatus(summary[setKey(s.affect, s.setNumber)].total) === 'complete').length
@@ -84,7 +85,11 @@ export default function Home({
             <HeadphonesIcon />
             Listen and Edit Stories
           </button>
-          <p className="footnote">Playing stories to your loved one opens once all 4 sets are approved.</p>
+          <button className="pill pill-white home-play" onClick={onPlay} disabled={!storyCount}>
+            <PlayIcon />
+            Play a story set
+          </button>
+          <p className="footnote">Plays a random set to your loved one. For now any set with stories can play; later, only once all 4 sets are approved.</p>
         </div>
       </main>
     </>

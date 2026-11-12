@@ -41,6 +41,20 @@ rules_version = '2';
 // Only the owner creates, lists and cancels invites. The person it's for (signed in with that
 // email address) can read it, and uses it up when joining, which needs a confirmed email address.
 //
+// Subcollection: groups/{groupId}/sessions/{sessionId}
+// Document ID: auto-generated
+// One for each time a story set is played to the patient, saved as it starts playing.
+// Fields (all required at create, no others):
+//   - playedBy: string - the uid of the member who played it
+//   - affect: string, "happy" or "challenging", and setNumber: int (1 or 2) - the set played
+//   - day: string ("YYYY-MM-DD") - the day it counts toward, on the player's calendar
+//   - startedAt: timestamp - server time of the save
+//   - before: map, the checklist before playing (ids from src/checklists.js):
+//       done: list of every BEFORE_ITEMS id (all must be ticked to play)
+//       awake: list (possibly empty) of AWAKE_BEHAVIORS ids
+// Members can read a group's sessions and save their own. Nothing changes after that yet, and
+// nobody can delete one.
+//
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
 // The treatments/{treatmentId} document itself is never read or written.
@@ -312,6 +326,27 @@ service cloud.firestore {
         && int(chunkId) < getAfter(storyPath(treatmentId, storyId)).data.chunkCount;
     }
 
+    // A session, saved by the member playing it, as the set starts. The ids must match
+    // BEFORE_ITEMS and AWAKE_BEHAVIORS in src/checklists.js.
+    function isValidSession(data) {
+      let fields = ['playedBy', 'affect', 'setNumber', 'day', 'startedAt', 'before'];
+      let beforeItems = ['hearingAid', 'soundCheck', 'told', 'earbuds', 'room', 'outOfView'];
+      let awakeBehaviors = ['opensEyes', 'opensEyesToStimulus', 'followsInstruction', 'intentionalMovement',
+                            'turnsToSound', 'makesSounds', 'respondsToTouch'];
+      return data.keys().hasAll(fields) && data.keys().hasOnly(fields)
+        && data.playedBy == request.auth.uid
+        && data.affect in ['happy', 'challenging']
+        && isIntInRange(data.setNumber, 1, 2)
+        && data.day is string && data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.startedAt == request.time
+        && data.before is map
+        && data.before.keys().hasAll(['done', 'awake']) && data.before.keys().hasOnly(['done', 'awake'])
+        && data.before.done is list && data.before.done.size() == beforeItems.size()
+        && data.before.done.hasAll(beforeItems)
+        && data.before.awake is list && data.before.awake.size() <= awakeBehaviors.size()
+        && data.before.awake.hasOnly(awakeBehaviors);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -343,6 +378,12 @@ service cloud.firestore {
         // The owner cancels it, or the person it's for uses it up when joining.
         allow delete: if isOwner(groupId)
           || (isEmailVerified() && myEmail() != '' && resource.data.email == myEmail());
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId) && isValidSession(request.resource.data);
+        allow update, delete: if false;
       }
     }
 

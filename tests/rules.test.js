@@ -306,3 +306,48 @@ describe('deleting and restoring stories', () => {
     await assertFails(softDelete(JEFF, { replacedBy: 's3' }));
   });
 });
+
+describe('sessions (playing a set)', () => {
+  const ALL_BEFORE = ['hearingAid', 'soundCheck', 'told', 'earbuds', 'room', 'outOfView'];
+
+  // A session as the app saves it when a set starts playing.
+  function session(person, fields = {}) {
+    return {
+      playedBy: person.uid, affect: 'happy', setNumber: 1, day: '2026-11-12', startedAt: serverTimestamp(),
+      before: { done: ALL_BEFORE, awake: ['opensEyes'] }, ...fields,
+    };
+  }
+  const start = (person, fields) => setDoc(doc(as(person), 'groups/sam/sessions/p1'), session(person, fields));
+
+  test('a member saves a session as a set starts', () => assertSucceeds(start(JEFF)));
+  test('even when the patient shows no sign of being awake', () =>
+    assertSucceeds(start(JEFF, { before: { done: ALL_BEFORE, awake: [] } })));
+  test('others cannot', () => assertFails(start(MIA)));
+  test('not in the name of someone else', () => assertFails(start(JEFF, { playedBy: 'ann' })));
+  test('not with a made-up time', () => assertFails(start(JEFF, { startedAt: Timestamp.fromMillis(0) })));
+  test('only for a real set', async () => {
+    await assertFails(start(JEFF, { affect: 'sad' }));
+    await assertFails(start(JEFF, { setNumber: 3 }));
+  });
+  test('the day must be a date', () => assertFails(start(JEFF, { day: 'today' })));
+  test('every checklist item must be ticked', () =>
+    assertFails(start(JEFF, { before: { done: ALL_BEFORE.slice(1), awake: [] } })));
+  test('with only known checklist items and signs of being awake', async () => {
+    await assertFails(start(JEFF, { before: { done: [...ALL_BEFORE.slice(1), 'made-up'], awake: [] } }));
+    await assertFails(start(JEFF, { before: { done: ALL_BEFORE, awake: ['made-up'] } }));
+  });
+  test('and no other fields', async () => {
+    await assertFails(start(JEFF, { extra: true }));
+    await assertFails(start(JEFF, { before: { done: ALL_BEFORE, awake: [], extra: true } }));
+  });
+
+  describe('once saved', () => {
+    beforeEach(() => env.withSecurityRulesDisabled((context) =>
+      setDoc(doc(context.firestore(), 'groups/sam/sessions/p1'), session(JEFF, { startedAt: new Date() }))));
+
+    test('members read the sessions', () => assertSucceeds(getDocs(collection(as(ANN), 'groups/sam/sessions'))));
+    test('others cannot', () => assertFails(getDocs(collection(as(MIA), 'groups/sam/sessions'))));
+    test('nobody deletes one', () => assertFails(deleteDoc(doc(as(JEFF), 'groups/sam/sessions/p1'))));
+    test('nobody rewrites it', () => assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/p1'), { setNumber: 2 })));
+  });
+});

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AfterChecklist from './AfterChecklist.jsx';
+import BeforeChecklist from './BeforeChecklist.jsx';
 import CareTeam, { InviteSomeone } from './CareTeam.jsx';
 import YourCareTeams, { StartCareTeam } from './CareTeams.jsx';
 import EditStory from './EditStory.jsx';
 import Home from './Home.jsx';
 import JoinGroup from './JoinGroup.jsx';
 import NavBar from './NavBar.jsx';
+import PlaySet from './PlaySet.jsx';
 import RecordStory from './RecordStory.jsx';
 import Sidebar from './Sidebar.jsx';
 import SignIn from './SignIn.jsx';
@@ -13,12 +16,15 @@ import StorySets from './StorySets.jsx';
 import { displayName, signOut, useUser } from './auth.js';
 import { isValidGroupId, listMyGroups } from './group.js';
 import { BackIcon, HeadphonesIcon, HomeIcon, MicIcon, PeopleIcon } from './icons.jsx';
+import { pickSet } from './playing.js';
+import { endSession, saveAfter, startSession } from './sessions.js';
 import { listStories, removeExpiredStories } from './storage.js';
 import { SET_MIN, formatTime, isPastRecovery, setKey, setName, summarizeSets } from './stories.js';
 
 // Screens: { name: 'home' }, { name: 'sets' }, { name: 'stories' }, { name: 'record', affect, setNumber },
 // { name: 'edit', storyId }, { name: 'team' } (Care team), { name: 'invite' }, { name: 'teams' }
-// (Your care teams) or { name: 'newTeam' }.
+// (Your care teams), { name: 'newTeam' }, or playing a set to the patient: { name: 'before', affect,
+// setNumber, order } (the checklist), { name: 'playing', ..., sessionId } and { name: 'after', sessionId }.
 // Each one is a browser history entry, so the phone's back button goes to the previous screen.
 // `depth` counts this app's screens behind the current one, so Back never leaves the app.
 const HOME = { name: 'home', depth: 0 };
@@ -82,10 +88,12 @@ const MENU = [
 
 // The menu item each screen belongs to: recording starts from the sets, editing from Listen,
 // and inviting, switching and starting care teams from Care team.
-const SECTION = { record: 'sets', edit: 'stories', invite: 'team', teams: 'team', newTeam: 'team' };
+const SECTION = {
+  record: 'sets', edit: 'stories', before: 'home', playing: 'home', after: 'home', invite: 'team', teams: 'team', newTeam: 'team',
+};
 
-// Recording and editing are focused steps: a narrower page, and no leaving it from the sidebar.
-const FOCUSED = ['record', 'edit'];
+// Recording, editing and playing a set are focused steps: a narrower page, and no leaving it from the sidebar.
+const FOCUSED = ['record', 'edit', 'before', 'playing', 'after'];
 
 // Everything starts with signing in. Each account gets a fresh app, so nothing from one person's
 // session (screens, stories, the current group) carries over to the next.
@@ -142,6 +150,12 @@ function CareApp({ user }) {
     deleted.sort((a, b) => b.deletedAt.toMillis() - a.deletedAt.toMillis());
     return [currentStories.filter((s) => !s.deletedAt), deleted];
   }, [currentStories]);
+
+  // The stories of the set being played, in the random order picked when Play was tapped.
+  const playOrder = screen.name === 'playing' ? screen.order : null;
+  const playStories = useMemo(() => (playOrder && activeStories
+    ? playOrder.map((id) => activeStories.find((s) => s.id === id)).filter(Boolean)
+    : null), [playOrder, activeStories]);
 
   async function refreshStories(groupId = group.groupId) {
     if (groupId !== activeGroupId.current) return;
@@ -332,6 +346,39 @@ function CareApp({ user }) {
     }
   }
 
+  // Play on Home: pick a set at random, then the checklist before playing it.
+  function playRandomSet() {
+    const pick = pickSet(activeStories ?? []);
+    if (pick) goTo({ name: 'before', ...pick });
+    else setNotice('Record a story first, then you can play it.');
+  }
+
+  // The checklist is done: save the session, then play the set. Replacing the checklist in the
+  // history means Back from the player goes Home, not into the checklist again.
+  async function startPlaying(before) {
+    const { affect, setNumber, order } = screen;
+    const sessionId = await startSession(group.groupId, { affect, setNumber, before });
+    const entry = { name: 'playing', affect, setNumber, order, sessionId, depth: screen.depth };
+    history.replaceState(entry, '');
+    setScreen(entry);
+    window.scrollTo(0, 0);
+  }
+
+  // The set ended or was stopped: on to the questions after playing.
+  async function finishPlaying() {
+    await endSession(group.groupId, screen.sessionId);
+    const entry = { name: 'after', sessionId: screen.sessionId, depth: screen.depth };
+    history.replaceState(entry, '');
+    setScreen(entry);
+    window.scrollTo(0, 0);
+  }
+
+  async function answeredAfter(after) {
+    await saveAfter(group.groupId, screen.sessionId, after);
+    goTo(HOME);
+    setNotice('Thanks. That session is done.');
+  }
+
   if (groups === null) return <Loading text={groupsError ? '' : 'Loading your care teams...'} error={groupsError} />;
 
   if (invite && !groups.some((item) => item.id === invite.groupId)) {
@@ -425,7 +472,31 @@ function CareApp({ user }) {
         onRecord={() => goTo(SETS_SCREEN)}
         onRecordInSet={recordInSet}
         onListen={() => goTo(STORIES_SCREEN)}
+        onPlay={playRandomSet}
       />
+    );
+  } else if (screen.name === 'before') {
+    content = (
+      <>
+        <NavBar left={backButton} />
+        <BeforeChecklist onDone={startPlaying} onCancel={goBack} />
+      </>
+    );
+  } else if (screen.name === 'playing') {
+    content = playStories?.length ? (
+      <>
+        <NavBar />
+        <PlaySet affect={screen.affect} setNumber={screen.setNumber} stories={playStories} onFinished={finishPlaying} />
+      </>
+    ) : (
+      <main className="content">{status || <p className="error" role="alert">These stories were deleted.</p>}</main>
+    );
+  } else if (screen.name === 'after') {
+    content = (
+      <>
+        <NavBar left={backButton} />
+        <AfterChecklist onDone={answeredAfter} />
+      </>
     );
   } else if (!summary) {
     content = <main className="content">{status}</main>;
@@ -478,7 +549,7 @@ function CareApp({ user }) {
       <Sidebar
         items={MENU}
         current={section}
-        locked={focused}
+        locked={focused && (['record', 'edit'].includes(screen.name) ? 'Finish or cancel this story to leave.' : 'Finish this session to leave.')}
         onGo={goTo}
         groupName={currentGroup?.name}
         account={account}
