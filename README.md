@@ -71,24 +71,6 @@ Run `npx firebase login` once first.
 `npm run dev` and `npm run dev:mobile` use the live project instead.
 The live project still runs the version from before sign-in, so use `npm run dev:local` or the dev project until it's moved over.
 
-## Use your own Firebase project
-
-To run a fork on your own Firebase project:
-
-1. Create a project in the [Firebase console](https://console.firebase.google.com), add a web app to it, and create a Cloud Firestore database (Standard edition).
-In Authentication, turn on the Google and Email/Password sign-in providers.
-2. Copy `.env` to `.env.local` and fill in your web app's config.
-`.env.local` isn't committed and overrides `.env`.
-3. Deploy the security rules, indexes and the app:
-
-```bash
-npx firebase login
-npm run build
-npx firebase deploy --only firestore,hosting --project your-project-id
-```
-
-The free Spark plan is enough.
-
 ## Built with
 
 React, Vite and Firebase (Authentication, Cloud Firestore and Hosting).
