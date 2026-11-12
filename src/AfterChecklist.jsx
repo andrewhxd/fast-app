@@ -3,12 +3,25 @@ import { AFTER_BEHAVIORS, CHANGES } from './checklists.js';
 
 const CHANGE_LABELS = { more: 'More', same: 'Same', less: 'Less' };
 
-// Patch 2: the questions after a set has played.
-// Calls onDone({ changes, agitated }), where changes is { behaviorId: 'more' | 'same' | 'less' }.
-// TODO: show it when the set finishes playing, and save with endSession() and saveAfter() (see App.jsx).
+// The questions after a set has played.
+// Calls onDone({ changes, agitated }), where changes is { behaviorId: 'more' | 'same' | 'less' };
+// App saves them. If that fails, the error shows here so they can try again.
 export default function AfterChecklist({ onDone }) {
   const [changes, setChanges] = useState({});
   const [agitated, setAgitated] = useState(null); // true, false, or null until answered
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      await onDone({ changes, agitated });
+    } catch (err) {
+      setError(`Could not save your answers: ${err.message}`);
+      setSaving(false);
+    }
+  }
 
   const allAnswered = AFTER_BEHAVIORS.every((item) => changes[item.id]) && agitated !== null;
 
@@ -54,9 +67,10 @@ export default function AfterChecklist({ onDone }) {
         <p className="notice caution">Consider stopping the sessions, and check again each week.</p>
       )}
 
+      {error && <p className="error" role="alert">{error}</p>}
       <div className="actions">
-        <button className="pill pill-primary" disabled={!allAnswered} onClick={() => onDone({ changes, agitated })}>
-          Save
+        <button className="pill pill-primary" disabled={!allAnswered || saving} onClick={save}>
+          {saving ? 'Saving...' : 'Save'}
         </button>
       </div>
     </main>

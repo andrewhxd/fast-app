@@ -4,11 +4,24 @@ import { loadStoryAudio, splitClips } from './storage.js';
 import { setName } from './stories.js';
 
 // Plays one set to the patient: `stories` in the order given (already shuffled), one after another.
-// Calls onFinished() when the caregiver continues, after the set ends or if they stop early.
+// Calls onFinished() when the caregiver continues, after the set ends or if they stop early;
+// App saves that the session stopped. If that fails, the error shows here so they can try again.
 export default function PlaySet({ affect, setNumber, stories, onFinished }) {
   const [audio, setAudio] = useState({}); // story id -> its audio Blob, once loaded
   const [error, setError] = useState('');
   const [ended, setEnded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function finish() {
+    setSaving(true);
+    setError('');
+    try {
+      await onFinished();
+    } catch (err) {
+      setError(`Could not save the session: ${err.message}`);
+      setSaving(false);
+    }
+  }
 
   // Load every story's audio first, since phones only let audio start right from a tap.
   useEffect(() => {
@@ -46,9 +59,9 @@ export default function PlaySet({ affect, setNumber, stories, onFinished }) {
       </section>
       <div className="actions">
         {ended ? (
-          <button className="pill pill-primary" onClick={onFinished}>Continue</button>
+          <button className="pill pill-primary" onClick={finish} disabled={saving}>Continue</button>
         ) : (
-          <button className="pill pill-white" onClick={onFinished}>Stop early</button>
+          <button className="pill pill-white" onClick={finish} disabled={saving}>Stop early</button>
         )}
       </div>
     </main>

@@ -122,8 +122,8 @@ If an edit makes a set too long, go to its list of stories to pick one to edit; 
 
 ## Playing story sets to the patient (slides 22 to 27) - Partly built
 
-Built: **Play a story set** on Home picks a random set with stories and shuffles them, the pre-session checklist (both screens) saved as a session with who played it, the set, the day and the time, the player, and the post-session checklist screen.
-Not built: saving the end of a session and the post-session answers, leaving out sets already played today, the approval gate, the 2-hour warning, reminders, instructions and progress on Home.
+Built: **Play a story set** on Home picks a random set with stories and shuffles them, the pre-session checklist (both screens) saved as a session with who played it, the set, the day and the time, the player (saving when it stopped), and the post-session checklist, saved on the session.
+Not built: leaving out sets already played today, the approval gate, the 2-hour warning, reminders, instructions and progress on Home.
 Until the eligibility survey exists, the hearing aid item reads "in place (or they don't use one)" for everyone.
 
 Scenario (slide 22):

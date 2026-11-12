@@ -52,8 +52,13 @@ rules_version = '2';
 //   - before: map, the checklist before playing (ids from src/checklists.js):
 //       done: list of every BEFORE_ITEMS id (all must be ticked to play)
 //       awake: list (possibly empty) of AWAKE_BEHAVIORS ids
-// Members can read a group's sessions and save their own. Nothing changes after that yet, and
-// nobody can delete one.
+// Fields added later, each once, by the member who played it:
+//   - endedAt: timestamp - server time when the set stopped playing (it ended, or was stopped early)
+//   - after: map, the checklist after playing, once endedAt is there:
+//       changes: map from every AFTER_BEHAVIORS id to "more", "same" or "less"
+//       agitated: bool - whether the patient became agitated
+// Members can read a group's sessions and save their own. Nothing else changes, and nobody can
+// delete one.
 //
 // Collection: treatments/{treatmentId}/stories
 // Treatment ID: only "demo"; stories are split by group instead (the `group` field).
@@ -347,6 +352,40 @@ service cloud.firestore {
         && data.before.awake.hasOnly(awakeBehaviors);
     }
 
+    // The set stopped playing: the member who played it adds endedAt, now, once.
+    function isEndingSession() {
+      return resource.data.playedBy == request.auth.uid
+        && !('endedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['endedAt'])
+        && request.resource.data.endedAt == request.time;
+    }
+
+    function isChange(value) {
+      return value in ['more', 'same', 'less'];
+    }
+
+    // The answers after playing: the member who played it adds them once, after it stopped.
+    // The ids must match AFTER_BEHAVIORS in src/checklists.js.
+    function isSavingAfter() {
+      let after = request.resource.data.after;
+      let behaviors = ['opensEyes', 'opensEyesToStimulus', 'followsInstruction', 'intentionalMovement',
+                       'turnsToSound', 'makesSounds', 'respondsToTouch', 'answersQuestions', 'usesObject'];
+      return resource.data.playedBy == request.auth.uid
+        && 'endedAt' in resource.data
+        && !('after' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['after'])
+        && after is map
+        && after.keys().hasAll(['changes', 'agitated']) && after.keys().hasOnly(['changes', 'agitated'])
+        && after.agitated is bool
+        && after.changes is map
+        && after.changes.keys().hasAll(behaviors) && after.changes.keys().hasOnly(behaviors)
+        && isChange(after.changes.opensEyes) && isChange(after.changes.opensEyesToStimulus)
+        && isChange(after.changes.followsInstruction) && isChange(after.changes.intentionalMovement)
+        && isChange(after.changes.turnsToSound) && isChange(after.changes.makesSounds)
+        && isChange(after.changes.respondsToTouch) && isChange(after.changes.answersQuestions)
+        && isChange(after.changes.usesObject);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -383,7 +422,8 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read: if isMember(groupId);
         allow create: if isMember(groupId) && isValidSession(request.resource.data);
-        allow update, delete: if false;
+        allow update: if isMember(groupId) && (isEndingSession() || isSavingAfter());
+        allow delete: if false;
       }
     }
 

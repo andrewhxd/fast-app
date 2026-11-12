@@ -1,14 +1,14 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore/lite';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore/lite';
 import { auth, db } from './firebase.js';
 import { isValidGroupId } from './group.js';
 
 // Saving each time a story set is played to the patient (a "session").
 //
 //   groups/{groupId}/sessions/{sessionId}
-//     playedBy, affect, setNumber, day, startedAt   saved when playing starts (Patch 1)
-//     before: { done: [...], awake: [...] }         ids from checklists.js (Patch 1)
-//     endedAt                                       added when the set finishes (Patch 2)
-//     after: { changes: { id: 'more' | 'same' | 'less' }, agitated: true/false }   (Patch 2)
+//     playedBy, affect, setNumber, day, startedAt   saved when playing starts
+//     before: { done: [...], awake: [...] }         ids from checklists.js
+//     endedAt                                       added when the set stops playing
+//     after: { changes: { id: 'more' | 'same' | 'less' }, agitated: true/false }   added after
 //
 // Every write is checked by the rules for groups/{groupId}/sessions in firestore.rules.
 
@@ -20,7 +20,7 @@ export function localDay(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-// Patch 1: save a new session, played by the signed-in person, as the set starts playing.
+// Save a new session, played by the signed-in person, as the set starts playing.
 // `before` is what the checklist before playing handed over. Returns the session id.
 export async function startSession(groupId, { affect, setNumber, before }) {
   if (!isValidGroupId(groupId)) throw new Error('Choose a valid care team first.');
@@ -35,12 +35,13 @@ export async function startSession(groupId, { affect, setNumber, before }) {
   return sessionRef.id;
 }
 
-// Patch 2: mark the session as played to the end.
-export async function endSession(groupId, sessionId) {
-  console.log('TODO endSession', { groupId, sessionId });
+// Mark the session as stopped playing (it ended, or was stopped early), now.
+export function endSession(groupId, sessionId) {
+  return updateDoc(doc(sessionsRef(groupId), sessionId), { endedAt: serverTimestamp() });
 }
 
-// Patch 2: save the after-playing answers.
-export async function saveAfter(groupId, sessionId, { changes, agitated }) {
-  console.log('TODO saveAfter', { groupId, sessionId, changes, agitated });
+// Save the after-playing answers. `changes` maps each AFTER_BEHAVIORS id to
+// 'more', 'same' or 'less'.
+export function saveAfter(groupId, sessionId, { changes, agitated }) {
+  return updateDoc(doc(sessionsRef(groupId), sessionId), { after: { changes, agitated } });
 }

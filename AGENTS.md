@@ -197,9 +197,8 @@ The set and individual story players have seek bars that move through the name a
   1. **Before you play**: 6 checklist items, all of which must be ticked.
   2. **Is your loved one awake?**: the 7 awake behaviors; with none ticked it suggests trying later, but still plays.
 Tapping **Play** saves a session (`groups/{groupId}/sessions`).
-  3. **Playing**: the set plays in its color; **Stop early**, or **Continue** once it ends.
-  4. **After playing**: More, Same or Less for each of 9 behaviors, then whether they became agitated (if so, it suggests considering stopping).
-Saving the end of a session and the after-playing answers isn't built yet (`endSession()` and `saveAfter()` in `src/sessions.js`).
+  3. **Playing**: the set plays in its color; **Stop early**, or **Continue** once it ends, adds when it stopped (`endedAt`).
+  4. **After playing**: More, Same or Less for each of 9 behaviors, then whether they became agitated (if so, it suggests considering stopping); **Save** adds the answers (`after`).
 The question lists are in `src/checklists.js`, and `/checklists.html` (dev only) shows the two checklists on their own.
 - The phone's back button moves between screens.
 
@@ -228,7 +227,7 @@ The design canvas linked above has every screen on phone and computer, the reaso
 - The eligibility survey.
 - Editing a story's title, storyteller or relationship after it's saved.
 - Clinician comments and approval, and automatically regrouping stories to fit the targets.
-- Playing: saving the end of a session and the after-playing answers, leaving out the sets played today, the 2-hour gap, progress tracking, instructions and reminders.
+- Playing: leaving out the sets played today, the 2-hour gap, progress tracking, instructions and reminders.
 
 ## Firebase
 
@@ -260,7 +259,8 @@ The README explains how to run a fork on its own Firebase project.
 groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt
 groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
-groups/{groupId}/sessions/{sessionId}    playedBy, affect, setNumber, day, startedAt, before: { done, awake }
+groups/{groupId}/sessions/{sessionId}    playedBy, affect, setNumber, day, startedAt, before: { done, awake },
+                                         then endedAt, then after: { changes, agitated }
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt, and once deleted: deletedAt,
@@ -288,7 +288,8 @@ A full treatment (4 sets of about 10 minutes) is roughly 20 MB, so the free 1 Gi
 Every request must be signed in.
 Only a group's members can read the group, its members and its stories, and save, move or delete its stories.
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
-Members read a group's sessions and save their own: every checklist item ticked, only known awake behaviors, and the server's time; a session can't be changed or deleted yet.
+Members read a group's sessions and save their own: every checklist item ticked, only known awake behaviors, and the server's time.
+After that, only the member who played it adds `endedAt` (once, at the server's time), then `after` (once, with all 9 behaviors answered More, Same or Less, and agitated true or false); nobody deletes one.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
 Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`affect` and `setNumber`, to a valid affect and set 1 or 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).

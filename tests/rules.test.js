@@ -351,3 +351,67 @@ describe('sessions (playing a set)', () => {
     test('nobody rewrites it', () => assertFails(updateDoc(doc(as(JEFF), 'groups/sam/sessions/p1'), { setNumber: 2 })));
   });
 });
+
+describe('sessions: after playing', () => {
+  const BEHAVIORS = ['opensEyes', 'opensEyesToStimulus', 'followsInstruction', 'intentionalMovement',
+    'turnsToSound', 'makesSounds', 'respondsToTouch', 'answersQuestions', 'usesObject'];
+  const allSame = Object.fromEntries(BEHAVIORS.map((id) => [id, 'same']));
+  const sessionDoc = (person) => doc(as(person), 'groups/sam/sessions/p1');
+  const end = (person) => updateDoc(sessionDoc(person), { endedAt: serverTimestamp() });
+  const saveAfter = (person, after = { changes: allSame, agitated: false }) => updateDoc(sessionDoc(person), { after });
+
+  // Jeff's session, saved as the set started; `fields` adds what came later.
+  function saved(fields = {}) {
+    return env.withSecurityRulesDisabled((context) => setDoc(doc(context.firestore(), 'groups/sam/sessions/p1'), {
+      playedBy: 'jeff', affect: 'happy', setNumber: 1, day: '2026-11-12', startedAt: new Date(),
+      before: { done: ['hearingAid', 'soundCheck', 'told', 'earbuds', 'room', 'outOfView'], awake: [] }, ...fields,
+    }));
+  }
+
+  test('the player marks it stopped playing', async () => {
+    await saved();
+    await assertSucceeds(end(JEFF));
+  });
+  test('not another member', async () => {
+    await saved();
+    await assertFails(end(ANN));
+  });
+  test('not with a made-up time', async () => {
+    await saved();
+    await assertFails(updateDoc(sessionDoc(JEFF), { endedAt: Timestamp.fromMillis(0) }));
+  });
+  test('only once', async () => {
+    await saved({ endedAt: new Date() });
+    await assertFails(end(JEFF));
+  });
+
+  test('the player saves the answers once it stopped', async () => {
+    await saved({ endedAt: new Date() });
+    await assertSucceeds(saveAfter(JEFF, { changes: { ...allSame, opensEyes: 'more', makesSounds: 'less' }, agitated: true }));
+  });
+  test('not before it stopped', async () => {
+    await saved();
+    await assertFails(saveAfter(JEFF));
+  });
+  test('not another member', async () => {
+    await saved({ endedAt: new Date() });
+    await assertFails(saveAfter(ANN));
+  });
+  test('only once', async () => {
+    await saved({ endedAt: new Date(), after: { changes: allSame, agitated: false } });
+    await assertFails(saveAfter(JEFF));
+  });
+  test('every behavior must be answered, with more, same or less', async () => {
+    await saved({ endedAt: new Date() });
+    const { usesObject, ...missingOne } = allSame;
+    await assertFails(saveAfter(JEFF, { changes: missingOne, agitated: false }));
+    await assertFails(saveAfter(JEFF, { changes: { ...allSame, opensEyes: 'lots' }, agitated: false }));
+    await assertFails(saveAfter(JEFF, { changes: { ...allSame, madeUp: 'same' }, agitated: false }));
+  });
+  test('agitated must be yes or no, and nothing else is added', async () => {
+    await saved({ endedAt: new Date() });
+    await assertFails(saveAfter(JEFF, { changes: allSame, agitated: 'maybe' }));
+    await assertFails(saveAfter(JEFF, { changes: allSame, agitated: false, notes: 'hi' }));
+    await assertFails(updateDoc(sessionDoc(JEFF), { after: { changes: allSame, agitated: false }, setNumber: 2 }));
+  });
+});

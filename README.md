@@ -21,7 +21,7 @@ Only a care team's members can see or change its stories, which the database's s
 - Works on phones and on computers (with a sidebar layout at 960 px and wider), in light and dark mode.
 - Play a random story set to your loved one, with a checklist before and after.
 
-Separate access levels (administrator, clinician, storyteller, player), the eligibility survey, clinician approval, and saving the end of a session and its after-playing answers are not built yet.
+Separate access levels (administrator, clinician, storyteller, player), the eligibility survey, clinician approval, and the playing schedule (4 a day, 2 hours apart) are not built yet.
 
 ## Run it
 
