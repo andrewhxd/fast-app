@@ -46,7 +46,7 @@ export default function EditStory({ groupId, story, summary, onSaved, onCancel }
       limitText={room < STORY_MAX ? `${set} has room for ${formatTime(room)}` : `A story can be up to ${formatTime(STORY_MAX)}`}
       onSave={async (edited) => {
         await replaceStoryAudio(story, edited, groupId);
-        await onSaved(`Saved your edits to "${story.title}". The earlier version is in Recently deleted for ${RECOVERY_DAYS} days.`);
+        await onSaved(`Saved your edits to "${story.title}". The earlier version is in Recently deleted for ${RECOVERY_DAYS} days.`, story);
       }}
       onCancel={onCancel}
     />

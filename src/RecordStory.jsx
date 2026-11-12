@@ -25,7 +25,7 @@ const SAVE_ERRORS = {
 //             Either edit it to fit, or record it again.
 //   edit      the story editor
 //   review    listen back, add the title, storyteller, relationship and affect, then save
-export default function RecordStory({ groupId, affect: startAffect, setNumber, summary, onSaved, onCancel }) {
+export default function RecordStory({ groupId, affect: startAffect, setNumber, summary, notice, onSaved, onCancel }) {
   const recorder = useRecorder();
   const [step, setStep] = useState('name');
   const [editReturn, setEditReturn] = useState('review'); // where Cancel in the editor goes back to
@@ -183,6 +183,7 @@ export default function RecordStory({ groupId, affect: startAffect, setNumber, s
       {guideStep !== null && <RecordingGuide affect={affect} set={set} startStep={guideStep} onClose={() => setGuideStep(null)} />}
 
       <main className="content">
+        {notice && <p className="notice" role="alert">{notice}</p>}
         {step === 'name' && (
           <>
             <h1 className="page-title">Say the patient&apos;s name</h1>
