@@ -200,9 +200,19 @@ describe('stories', () => {
     await assertFails(saveStory(as(JEFF), 's2', 100, { group: 'rosa' }));
   });
   test('a member moves a story', () => assertSucceeds(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { setNumber: 2 })));
+  test('a member moves a story to a set with the other affect', () =>
+    assertSucceeds(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { affect: 'challenging', setNumber: 2 })));
+  test('but only to a real affect and set', async () => {
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { affect: 'sad', setNumber: 1 }));
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { affect: 'challenging', setNumber: 3 }));
+  });
+  test('and moving changes nothing else', () =>
+    assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { affect: 'challenging', setNumber: 1, title: 'New title' })));
   test('but not to another group', () =>
     assertFails(updateDoc(doc(as(ANN), 'treatments/demo/stories/s1'), { group: 'rosa' })));
   test('others cannot move it', () => assertFails(updateDoc(doc(as(MIA), 'treatments/demo/stories/s1'), { setNumber: 2 })));
+  test('others cannot change its affect', () =>
+    assertFails(updateDoc(doc(as(MIA), 'treatments/demo/stories/s1'), { affect: 'challenging', setNumber: 1 })));
 
 });
 
@@ -240,6 +250,8 @@ describe('deleting and restoring stories', () => {
   test('a deleted story cannot move', async () => {
     await deletedDaysAgo(1);
     await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { setNumber: 2 }));
+
+    await assertFails(updateDoc(doc(as(JEFF), 'treatments/demo/stories/s1'), { affect: 'challenging', setNumber: 1 }));
   });
 
   test('a member restores a deleted story, to either set', async () => {
