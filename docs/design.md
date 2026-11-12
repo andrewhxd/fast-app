@@ -67,14 +67,22 @@ Slide numbers refer to the project doc; [requirements.md](requirements.md) summa
 - **Exactly 4 sets** (slides 10, 11 and 21): 2 happy and 2 challenging.
 The family records the library once, a clinician approves it, and then it's locked.
 More sets would mean more recording without matching the protocol.
-- **Randomness belongs to playback** (slides 22 and 23, not built): 4 sessions a day, at least 2 hours apart, each a random set not yet played that day, with the stories in random order.
+- **Randomness belongs to playback** (slides 22 and 23): each session plays a random set not yet played that day, with the stories in random order.
+The app picks; the caregiver never chooses the set.
+The 4 sessions a day, at least 2 hours apart, aren't enforced yet.
 Recording has no randomness.
 - **Lengths**: a story is up to 5:00 counting the name said 3 times; a set holds any number of stories adding up to 9:00 to 11:00.
 The app checks both while recording, and the database rules check the 5:00 limit again.
 - **Open question**: slide 10 gives happy sets 9:45 to 10:15, while slides 11 and 19 say 9:00 to 11:00.
 The app uses 9:00 to 11:00 for all 4 sets; the tighter range would be one setting.
 - **Approval comes first** (slides 11 and 17): playing opens only after a clinician approves all 4 sets, and approved sets can't be edited.
-Home already says so.
+Approval isn't built, so for testing any set with stories can be played, and Home says so under the Play button.
+- **Playing starts with a checklist** (slides 24 and 26), used at a bedside, so each item is a big row that's easy to tap.
+The order follows slide 26.
+First "Is Sam awake?": the 7 signs of being awake. With none ticked, the app suggests waiting an hour or gently waking them, but still offers "Continue".
+Then "Get ready": a sound check (a short chime the app makes itself, heard through the earbuds, at about a voice's loudness) and the checklist; Continue stays greyed out until every item is ticked.
+Then the set plays on a card in its affect's color, showing the time left, and ends with "Take the earbuds out".
+Screens use the care team's name for the patient, since that's the name the family entered.
 - **Recording in 3 steps**: say the name 3 times, tell the story, add details (title, storyteller, relationship, happy or challenging).
 The relationship list includes an Other option with a text field for relationships not listed.
 A five-card guide shows the selected set, microphone access and the recording steps, with iPhone and Android microphone permission screenshots.
@@ -98,7 +106,7 @@ Tap a story, then "Move here" or another story to swap with.
 
 ## Designing what's next
 
-The canvas has a "Coming later" area for accounts, admin, approval and playing.
+The canvas has a "Coming later" area for accounts, admin, approval and playing (the playing checklists are built, without designs on the canvas yet).
 New screens should:
 
 - Reuse the existing components and tokens (cards, pills, set cards, bars, chips, `NavBar`, `ClipPlayer`) before inventing new ones.

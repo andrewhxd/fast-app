@@ -84,7 +84,8 @@ These come from the project doc ([docs/requirements.md](docs/requirements.md)) a
 - A story can be any length up to **5:00, counting the patient's name** said 3 times at its start.
 - A set holds any number of stories that add up to **9:00 to 11:00**.
 - Stories move only between sets with the same affect (happy or challenging).
-- Randomness belongs to playback, which is not built yet: 4 sessions a day, at least 2 hours apart, each playing a random set not yet played that day, with the stories in a set in random order, for 168 sessions in all (slides 22 and 23).
+- Randomness belongs to playback: each session plays a random set not yet played that day, with the stories in a set in random order (slides 22 and 23).
+The schedule around it (4 sessions a day, at least 2 hours apart, 168 in all) isn't enforced yet.
 - Open question: the slide 10 scenario gives happy sets 9:45 to 10:15, while the user stories (slides 11 and 19) say 9:00 to 11:00.
 The app uses 9:00 to 11:00 for all 4 sets until the client says otherwise.
 
@@ -104,7 +105,7 @@ npm run dev:remote   # http://localhost:5173, against the dev Firebase project
 npm run build        # production build into dist/, for the live project
 npm run deploy:dev   # build for the dev project and deploy it to https://fast-app-cs499-dev.web.app
 npm run deploy:branch # build for the dev project and deploy it to a 7-day preview address named after the branch
-npm run test:unit    # the story editor's plan and recording set progress
+npm run test:unit    # the story editor's plan, recording set progress and picking what to play
 npm run test:rules   # the security rules tests (tests/rules.test.js), against the Firestore emulator
 ```
 
@@ -117,7 +118,7 @@ The seed writes through the security rules, the way the app does, so a data mode
 Phones only allow the microphone over HTTPS.
 `npm run dev:mobile` prints a `Network: https://...` address for a phone on the same Wi-Fi; its certificate is self-signed, so tap through the warning the first time.
 
-The security rules have tests (`npm run test:rules`), as do the story editor's plan and recording set progress (`npm run test:unit`); there is no linter yet.
+The security rules have tests (`npm run test:rules`), as do the story editor's plan, recording set progress and picking what to play (`npm run test:unit`); there is no linter yet.
 Check changes by running the app with `npm run dev:local` and using it.
 
 ### Deploy
@@ -161,7 +162,7 @@ Only someone signed in with the invited email address, confirmed, can use it, an
 The current one is in the URL as `?group=<groupId>`; without it the app opens the one used last on that device.
 - **Home**: whose care team it is, how many of the 4 sets are ready, a bar per set in its color, and what to do next (e.g. "Happy set 2 needs about 3 more minutes").
 Set totals and the Listen screen include only the current care team's stories.
-On a phone, **Menu** (top right) shows your account and opens Home, Record a Story, Listen to Stories, Care team, Your care teams and Sign out.
+On a phone, **Menu** (top right) shows your account and opens Home, Record a Story, Listen and Edit Stories, Play Stories, Care team, Your care teams and Sign out.
 - **Record a story**: pick a set; each shows its stories, total and time left to go, with a bar from 0:00 to 11:00 and the 9:00 to 11:00 target shaded.
 A set in range shows "Ready" and can't take more stories.
 - **Recording a story**, in 3 steps (shown under the set's name at the top).
@@ -190,13 +191,22 @@ Each story's **⋯** opens **Edit**, **Move** and **Delete** (asks first).
 A move or swap is only offered when both sets stay at or under 11:00.
 Only one player plays at a time, and every story's audio downloads in the background when the screen opens, so play starts right away.
 The set and individual story players have seek bars that move through the name and story recordings.
+- **Play Stories** (Home, or Play in the menu), in 3 steps, in the order of slide 26.
+For testing, any set with stories can be played; later, playing opens only once all 4 sets are approved.
+  1. **Is Sam awake?**: tick the signs of being awake.
+With none, the app suggests waiting an hour or gently waking them, and offers **Continue** or **Not now**.
+  2. **Get ready**: the first time, whether the patient uses a hearing aid (saved for the care team); a sound check that plays a short chime (`src/chime.js`); and a checklist (hearing aid in place if they use one, the patient told, earbuds in, door closed and room quiet, out of view).
+Continue stays greyed out until every item is ticked.
+  3. **Playing**: a random set not yet played today, its stories shuffled, with the time left.
+The session is saved when Play is first tapped and marked as ended if the set plays to the end, which ends with "Take the earbuds out".
+Once every set with stories has played that day, Play says the next session is tomorrow.
 - The phone's back button moves between screens.
 
 ### On a computer
 
 In a window at least 960 px wide (`@media (min-width: 60rem)` in `src/styles.css`), a sidebar on the left replaces the Menu and Back buttons.
 Home also shows the 4 sets, each with its own Record button, and the sets sit in two columns, happy beside challenging.
-Recording and editing use a narrower, focused page (42rem), and the sidebar is locked until the story is finished or canceled.
+Recording, editing and playing use a narrower, focused page (42rem), and the sidebar is locked until the story or session is finished or canceled.
 
 ### Design
 
@@ -216,7 +226,7 @@ The design canvas linked above has every screen on phone and computer, the reaso
 - The eligibility survey.
 - Editing a story's title, storyteller or relationship after it's saved.
 - Clinician comments and approval, and automatically regrouping stories to fit the targets.
-- Playing story sets to the patient, the checklists, progress tracking and reminders.
+- The rest of playing: the post-session checklist, the approval gate, play instructions, progress tracking (168 sessions), the 2-hour warning and reminders.
 
 ## Firebase
 
@@ -245,9 +255,13 @@ The README explains how to run a fork on its own Firebase project.
 ### Data model
 
 ```
-groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt
+groups/{groupId}                         id, name (the patient's), ownerId (the lead caregiver), createdAt, updatedAt,
+                                         hearingAid (once answered)
 groups/{groupId}/members/{uid}           uid, name, email, joinedAt, invite (the invite accepted, if any)
 groups/{groupId}/invites/{inviteId}      email, groupName, invitedBy, invitedByName, createdAt
+groups/{groupId}/sessions/{id}           playedBy, affect, setNumber, day ("YYYY-MM-DD"), startedAt,
+                                         prepared (checklist keys), awake (signs of being awake),
+                                         endedAt (once the set has played to the end)
 treatments/demo/stories/{id}             title, storyteller, relationship, affect, setNumber,
                                          group, nameDuration, storyDuration, type, nameSize, size,
                                          chunkCount, createdAt, and once deleted: deletedAt,
@@ -277,6 +291,8 @@ Only a group's members can read the group, its members and its stories, and save
 Only the owner creates, lists and cancels invites, and removes members; the owner can't leave or be removed.
 Nobody can add themselves to a group except by starting it or accepting an invite for their own confirmed email address.
 Stories keep the earlier checks: every field with the right type and limits (including the 5:00 story limit, counting the name clip), saved and deleted only together with all of their audio, and the only edits are moving a story (`setNumber` between 1 and 2), deleting it (adding `deletedAt` and `deletedBy`) and restoring it.
+Members save a session for each set they play, once, and the player adds `endedAt` when it plays to the end; nothing else about a session changes, nobody can delete one, and its checklist answers must come from fixed lists.
+Any member can answer the hearing aid question once (`hearingAid` on the group); it can't change after that.
 Deleting is a soft delete: a story and its audio can be removed for good only after it has been deleted for 30 days (`RECOVERY_DAYS` in `src/stories.js`, mirrored in the rules).
 The free plan can't run scheduled jobs, so the app removes expired stories whenever a member loads the stories (`removeExpiredStories()`).
 Everything else is denied.
@@ -299,6 +315,10 @@ Everything else is denied.
 - `src/StoryEditor.jsx`: the story editor screen; `src/EditStory.jsx` opens a saved story in it.
 - `src/audioEdit.js`: the editing engine: decoding, finding pauses, the edit plan, time-stretching (SoundTouch) and MP3 encoding (LAME).
 - `src/StoryLibrary.jsx`: the Listen screen: play, rearrange, move and delete stories.
+- `src/PlaySession.jsx`: playing a set to the patient: the checklists, then the set.
+- `src/playing.js`: the playing rules: the checklist items, the signs of being awake, and picking a random set and story order.
+- `src/sessions.js`: saves and lists the sessions played, in Firestore.
+- `src/chime.js`: makes the sound check's chime, as a WAV file.
 - `src/ClipPlayer.jsx`: plays several clips back to back as one, as a full player or a compact row.
 - `src/audioCache.js`: keeps loaded audio in memory so replays don't download again.
 - `src/stories.js`: the FAST rules (9:00 to 11:00 per set, 5:00 per story, relationships) and time formatting.
@@ -313,7 +333,7 @@ Everything else is denied.
 - `src/audio.js`: picks a recording format the browser supports.
 - `src/icons.jsx`: the small inline icons.
 - `src/styles.css`: the stylesheet, with light and dark colors defined once at the top and the computer layout at the end.
-- `scripts/seed.js`: fills the local emulators with demo accounts, care teams, invites and sample stories (the ones in the design canvas), with generated voice-like WAV audio.
+- `scripts/seed.js`: fills the local emulators with demo accounts, care teams, invites and sample stories (the ones in the design canvas), spoken by the Mac's built-in voices (`say`), or a voice-like hum on other computers.
 - `firestore.rules`: the security rules, which are also the data model's schema.
 - `tests/rules.test.js`: the security rules tests.
 - `docs/`: onboarding docs (requirements, architecture, design, roadmap).

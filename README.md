@@ -34,6 +34,8 @@ npm run dev:local   # then open http://localhost:5173
 `npm run dev:local` runs the app against Firestore and Auth emulators on your computer, filled with demo accounts and sample stories, so you can sign in, record, edit, move, delete and invite freely.
 It needs Java 21 or newer.
 The local data resets each time you stop it (Ctrl+C), and the emulators' own UI at http://127.0.0.1:4000 shows the database and the accounts.
+On a Mac, the sample stories are spoken by the built-in voices, each starting with "Sam" said 3 times; the first run takes about 20 seconds to make them.
+On other computers they're a voice-like hum.
 
 The demo accounts all use the password `password`:
 
