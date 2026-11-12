@@ -309,6 +309,7 @@ function CareApp({ user }) {
 
   // After an edit, reload the list. If it left the set short, continue straight to recording there.
   async function editSaved(message, editedStory) {
+    const previousSetTotal = summary[setKey(editedStory.affect, editedStory.setNumber)].total;
     setSavingEdit(true); // the old story disappears from the list before this screen closes
     try {
       const updatedStories = await refreshStories();
@@ -316,7 +317,7 @@ function CareApp({ user }) {
       const setTotal = updatedStories
         ? summarizeSets(updatedStories.filter((s) => !s.deletedAt))[setKey(editedStory.affect, editedStory.setNumber)].total
         : null;
-      if (setTotal !== null && setTotal < SET_MIN) {
+      if (previousSetTotal >= SET_MIN && setTotal !== null && setTotal < SET_MIN) {
         const entry = { name: 'record', affect: editedStory.affect, setNumber: editedStory.setNumber, depth: screen.depth };
         history.replaceState(entry, '');
         setScreen(entry);
